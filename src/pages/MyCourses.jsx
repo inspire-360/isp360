@@ -5,9 +5,14 @@ import { collection, onSnapshot } from "firebase/firestore";
 import { useAuth } from "../contexts/AuthContext";
 import { db } from "../lib/firebase";
 import { courseCatalog } from "../data/courseCatalog";
+import { listLocalEnrollments } from "../lib/enrollment";
 import { getIcon } from "../utils/iconHelper";
 
 function formatDate(value) {
+  if (typeof value === "string" || typeof value === "number") {
+    return new Date(value).toLocaleDateString();
+  }
+
   if (!value?.toDate) {
     return "เพิ่งลงทะเบียน";
   }
@@ -26,19 +31,31 @@ export default function MyCourses() {
       return undefined;
     }
 
+    const localEnrollments = listLocalEnrollments(currentUser.uid).map((enrollment) => ({
+      id: enrollment.courseId || enrollment.id,
+      ...enrollment,
+    }));
+
     const unsubscribe = onSnapshot(
       collection(db, "users", currentUser.uid, "enrollments"),
       (querySnapshot) => {
-        setEnrollments(
-          querySnapshot.docs.map((docItem) => ({
+        const mergedEnrollments = new Map(
+          localEnrollments.map((enrollment) => [enrollment.id, enrollment]),
+        );
+
+        querySnapshot.docs.forEach((docItem) => {
+          mergedEnrollments.set(docItem.id, {
             id: docItem.id,
             ...docItem.data(),
-          })),
-        );
+          });
+        });
+
+        setEnrollments(Array.from(mergedEnrollments.values()));
         setLoading(false);
       },
       (error) => {
         console.error("Error fetching enrollments:", error);
+        setEnrollments(localEnrollments);
         setLoading(false);
       },
     );
@@ -52,7 +69,8 @@ export default function MyCourses() {
     () =>
       enrollments
         .map((enrollment) => {
-          const course = courseCatalog.find((item) => item.id === enrollment.id);
+          const enrollmentId = enrollment.courseId || enrollment.id;
+          const course = courseCatalog.find((item) => item.id === enrollmentId);
           return course ? { ...course, enrollment } : null;
         })
         .filter(Boolean),
@@ -76,8 +94,9 @@ export default function MyCourses() {
         <h2 className="mt-3 font-display text-4xl font-semibold tracking-[-0.08em] text-white">
           ทุกคอร์สที่คุณปลดล็อกแล้ว
         </h2>
-        <p className="mt-4 max-w-2xl text-base leading-7 text-slate-300">
-          กลับมาเรียนต่อในคอร์สที่ใช่ได้เร็วขึ้น มองเห็นพื้นที่ที่กำลังใช้งาน และหา step ถัดไปได้ง่ายขึ้น
+        <p className="mt-4 max-w-2xl text-base leading-8 text-slate-300">
+          กลับมาเรียนต่อในคอร์สที่ใช่ได้เร็วขึ้น มองเห็นพื้นที่ที่กำลังใช้งาน
+          และหาขั้นตอนถัดไปได้ง่ายขึ้นในหน้าเดียว
         </p>
       </section>
 
@@ -120,9 +139,7 @@ export default function MyCourses() {
                 </div>
 
                 <div className="p-6">
-                  <p className="text-sm leading-7 text-slate-300">
-                    {course.description}
-                  </p>
+                  <p className="text-sm leading-8 text-slate-300">{course.description}</p>
 
                   <div className="mt-6 grid gap-4 sm:grid-cols-2">
                     <div className="rounded-[22px] border border-white/10 bg-white/5 px-4 py-4">
@@ -149,7 +166,9 @@ export default function MyCourses() {
                       ใช้เวลาประมาณ {course.hours} ชั่วโมง
                     </span>
                     <span className="rounded-full border border-emerald-300/15 bg-emerald-400/10 px-3 py-1 text-xs font-medium text-emerald-300">
-                      {course.enrollment.status === "active" ? "กำลังเรียน" : course.enrollment.status || "กำลังเรียน"}
+                      {course.enrollment.status === "active"
+                        ? "กำลังเรียน"
+                        : course.enrollment.status || "กำลังเรียน"}
                     </span>
                   </div>
 
@@ -174,8 +193,9 @@ export default function MyCourses() {
           <h3 className="mt-6 font-display text-3xl font-semibold tracking-[-0.06em] text-slate-950">
             ยังไม่มีคอร์สที่ลงทะเบียน
           </h3>
-          <p className="mx-auto mt-3 max-w-lg text-sm leading-7 text-slate-500">
-            คุณยังไม่ได้เข้าสู่เส้นทางการเรียนรู้ใด ๆ กลับไปที่แดชบอร์ดเพื่อปลดล็อกคอร์สแรกของคุณได้เลย
+          <p className="mx-auto mt-3 max-w-lg text-sm leading-8 text-slate-500">
+            คุณยังไม่ได้เข้าสู่เส้นทางการเรียนรู้ใด ๆ
+            กลับไปที่แดชบอร์ดเพื่อปลดล็อกคอร์สแรกของคุณได้เลย
           </p>
           <button
             type="button"

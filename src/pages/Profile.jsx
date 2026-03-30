@@ -15,6 +15,10 @@ import { useNavigate } from "react-router-dom";
 import { auth, db } from "../lib/firebase";
 import { useAuth } from "../contexts/AuthContext";
 import { getRoleLabel, prefixOptions } from "../data/profileOptions";
+import {
+  readLocalProfileCache,
+  writeLocalProfileCache,
+} from "../lib/profileCache";
 
 function buildAvatar(firstName, lastName) {
   return `https://ui-avatars.com/api/?name=${encodeURIComponent(
@@ -65,6 +69,7 @@ export default function Profile() {
       try {
         const userRef = doc(db, "users", currentUser.uid);
         const userSnapshot = await getDoc(userRef);
+        const localProfile = readLocalProfileCache(currentUser.uid);
 
         if (!isMounted) {
           return;
@@ -75,30 +80,52 @@ export default function Profile() {
         if (userSnapshot.exists()) {
           const data = userSnapshot.data();
           const storedName = splitName(data.name || "");
+          const mergedData = { ...data, ...localProfile };
 
           setFormData({
-            prefix: data.prefix || "นาย",
-            firstName: data.firstName || storedName.firstName || authName.firstName || "",
-            lastName: data.lastName || storedName.lastName || authName.lastName || "",
-            position: data.position || "ครู",
-            school: data.school || "",
-            email: data.email || currentUser.email || "",
-            role: data.role || "learner",
-            photoURL: data.photoURL || currentUser.photoURL || "",
+            prefix: mergedData.prefix || "นาย",
+            firstName:
+              mergedData.firstName ||
+              storedName.firstName ||
+              authName.firstName ||
+              "",
+            lastName:
+              mergedData.lastName ||
+              storedName.lastName ||
+              authName.lastName ||
+              "",
+            position: mergedData.position || "ครู",
+            school: mergedData.school || "",
+            email: mergedData.email || currentUser.email || "",
+            role: mergedData.role || "learner",
+            photoURL: mergedData.photoURL || currentUser.photoURL || "",
           });
           return;
         }
 
         setFormData((previous) => ({
           ...previous,
-          firstName: authName.firstName || "",
-          lastName: authName.lastName || "",
-          email: currentUser.email || "",
-          photoURL: currentUser.photoURL || "",
+          prefix: localProfile?.prefix || previous.prefix,
+          firstName: localProfile?.firstName || authName.firstName || "",
+          lastName: localProfile?.lastName || authName.lastName || "",
+          position: localProfile?.position || previous.position,
+          school: localProfile?.school || "",
+          email: localProfile?.email || currentUser.email || "",
+          role: localProfile?.role || previous.role,
+          photoURL: localProfile?.photoURL || currentUser.photoURL || "",
         }));
       } catch (error) {
         console.error("Error fetching profile:", error);
-        if (isMounted) {
+        const localProfile = readLocalProfileCache(currentUser.uid);
+
+        if (isMounted && localProfile) {
+          setFormData((previous) => ({
+            ...previous,
+            ...localProfile,
+            email: localProfile.email || currentUser.email || "",
+            role: localProfile.role || previous.role,
+          }));
+        } else if (isMounted) {
           setMessage({
             type: "error",
             text: "ไม่สามารถโหลดข้อมูลโปรไฟล์ได้ในขณะนี้",
@@ -155,23 +182,42 @@ export default function Profile() {
         formData.photoURL || buildAvatar(formData.firstName, formData.lastName);
       const fullName = `${formData.prefix}${formData.firstName} ${formData.lastName}`.trim();
       const userRef = doc(db, "users", currentUser.uid);
+      const editableProfilePayload = {
+        prefix: formData.prefix,
+        firstName: formData.firstName.trim(),
+        lastName: formData.lastName.trim(),
+        name: fullName,
+        position: formData.position.trim(),
+        school: formData.school.trim(),
+        photoURL: nextPhotoURL,
+        updatedAt: serverTimestamp(),
+      };
+      const localProfilePayload = {
+        prefix: editableProfilePayload.prefix,
+        firstName: editableProfilePayload.firstName,
+        lastName: editableProfilePayload.lastName,
+        name: editableProfilePayload.name,
+        position: editableProfilePayload.position,
+        school: editableProfilePayload.school,
+        photoURL: editableProfilePayload.photoURL,
+        email: formData.email || currentUser.email || "",
+        role: formData.role || "learner",
+        updatedAt: new Date().toISOString(),
+      };
+      let firestoreSaved = false;
 
-      await setDoc(
-        userRef,
-        {
-          prefix: formData.prefix,
-          firstName: formData.firstName.trim(),
-          lastName: formData.lastName.trim(),
-          name: fullName,
-          position: formData.position.trim(),
-          school: formData.school.trim(),
-          email: formData.email || currentUser.email || "",
-          role: formData.role || "learner",
-          photoURL: nextPhotoURL,
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true },
-      );
+      try {
+        await setDoc(userRef, editableProfilePayload, { merge: true });
+        firestoreSaved = true;
+      } catch (firestoreError) {
+        const isPermissionError =
+          firestoreError.code === "permission-denied" ||
+          firestoreError.message?.includes("Missing or insufficient permissions");
+
+        if (!isPermissionError) {
+          throw firestoreError;
+        }
+      }
 
       if (auth.currentUser) {
         try {
@@ -184,13 +230,16 @@ export default function Profile() {
         }
       }
 
+      writeLocalProfileCache(currentUser.uid, localProfilePayload);
       setFormData((previous) => ({
         ...previous,
         photoURL: nextPhotoURL,
       }));
       setMessage({
-        type: "success",
-        text: "บันทึกข้อมูลโปรไฟล์เรียบร้อยแล้ว",
+        type: firestoreSaved ? "success" : "success",
+        text: firestoreSaved
+          ? "บันทึกข้อมูลโปรไฟล์เรียบร้อยแล้ว"
+          : "อัปเดตชื่อบัญชีและบันทึกโปรไฟล์บนอุปกรณ์นี้แล้ว แม้ฐานข้อมูลจะยังไม่อนุญาตให้เขียนข้อมูลส่วนนี้",
       });
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (error) {

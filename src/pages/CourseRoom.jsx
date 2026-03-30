@@ -33,6 +33,11 @@ import {
   makeUniqueId,
 } from "../lib/teacherCourseReports";
 import {
+  createLocalEnrollmentPayload,
+  getLocalEnrollment,
+  writeLocalEnrollment,
+} from "../lib/enrollment";
+import {
   MODULE_STATE_KEY_BY_ID,
   PLC_TEACHER_POOL,
   buildInsightTokens,
@@ -153,6 +158,7 @@ export default function CourseRoom() {
       const defaultState = createDefaultTeacherCourseState();
       const defaultProgress = createDefaultTeacherProgress();
       const enrollmentRef = doc(db, "users", currentUser.uid, "enrollments", COURSE_ID);
+      const localEnrollment = getLocalEnrollment(currentUser.uid, COURSE_ID);
 
       try {
         const [snapshot, localDraft] = await Promise.all([
@@ -161,35 +167,56 @@ export default function CourseRoom() {
         ]);
 
         const remoteData = snapshot.exists() ? snapshot.data() : {};
+        const baseEnrollment =
+          snapshot.exists()
+            ? remoteData
+            : localEnrollment || createLocalEnrollmentPayload(teacherCourseData, "local-cache");
         if (!snapshot.exists()) {
-          await setDoc(
-            enrollmentRef,
-            {
-              enrolledAt: new Date(),
-              status: "active",
-              lastAccess: new Date(),
-              courseState: defaultState,
-              completedLessons: [],
-              currentModuleIndex: 0,
-              quizAttempts: {},
-              quizScores: {},
-              quizCooldowns: {},
-              badges: [],
-            },
-            { merge: true },
-          );
+          try {
+            await setDoc(
+              enrollmentRef,
+              {
+                enrolledAt: new Date(),
+                status: "active",
+                lastAccess: new Date(),
+                courseState: defaultState,
+                completedLessons: [],
+                currentModuleIndex: 0,
+                quizAttempts: {},
+                quizScores: {},
+                quizCooldowns: {},
+                badges: [],
+              },
+              { merge: true },
+            );
+          } catch (error) {
+            console.error("Error creating remote enrollment:", error);
+          }
         }
 
         const mergedState = deepMerge(
-          deepMerge(defaultState, remoteData.courseState || {}),
+          deepMerge(defaultState, baseEnrollment.courseState || {}),
           localDraft?.courseState || {},
         );
-        const mergedProgress = normalizeProgress(defaultProgress, remoteData, localDraft);
+        const mergedProgress = normalizeProgress(defaultProgress, baseEnrollment, localDraft);
         const routeModuleIndex = getModuleIndexFromPath(initialPathRef.current);
         const initialModuleIndex =
           routeModuleIndex !== null && routeModuleIndex <= mergedProgress.currentModuleIndex
             ? routeModuleIndex
             : mergedProgress.currentModuleIndex;
+
+        writeLocalEnrollment(currentUser.uid, COURSE_ID, {
+          ...baseEnrollment,
+          courseState: mergedState,
+          completedLessons: mergedProgress.completedLessons,
+          currentModuleIndex: mergedProgress.currentModuleIndex,
+          quizAttempts: mergedProgress.quizAttempts,
+          quizScores: mergedProgress.quizScores,
+          quizCooldowns: mergedProgress.quizCooldowns,
+          badges: mergedProgress.badges,
+          status: "active",
+          lastAccess: new Date().toISOString(),
+        });
 
         if (!isMounted) {
           return;
@@ -208,6 +235,33 @@ export default function CourseRoom() {
         setInitialized(true);
       } catch (error) {
         console.error("Error loading teacher course:", error);
+        const fallbackDraft = readLocalDraft(currentUser.uid);
+        const cachedEnrollment =
+          getLocalEnrollment(currentUser.uid, COURSE_ID) ||
+          createLocalEnrollmentPayload(teacherCourseData, "local-cache");
+        const fallbackState = deepMerge(
+          deepMerge(defaultState, cachedEnrollment.courseState || {}),
+          fallbackDraft?.courseState || {},
+        );
+        const fallbackProgress = normalizeProgress(
+          defaultProgress,
+          cachedEnrollment,
+          fallbackDraft,
+        );
+
+        if (isMounted) {
+          setCourseState(fallbackState);
+          setProgress(fallbackProgress);
+          setActiveModuleIndex(fallbackProgress.currentModuleIndex);
+          setActiveLessonIndex(
+            getFirstIncompleteLessonIndex(
+              teacherCourseData.modules[fallbackProgress.currentModuleIndex],
+              fallbackProgress.completedLessons,
+            ),
+          );
+          setExpandedModules(createExpandedMap(fallbackProgress.currentModuleIndex));
+          setInitialized(true);
+        }
         showFeedback(setFeedback, feedbackTimeoutRef, "error", "โหลดข้อมูลไม่สำเร็จ", "ระบบจะใช้แบบร่างบนอุปกรณ์ชั่วคราวก่อน");
       } finally {
         if (isMounted) {
@@ -228,6 +282,19 @@ export default function CourseRoom() {
     }
 
     writeLocalDraft(currentUser.uid, { courseState, progress });
+    writeLocalEnrollment(currentUser.uid, COURSE_ID, {
+      courseId: COURSE_ID,
+      courseTitle: teacherCourseData.title,
+      courseState,
+      completedLessons: progress.completedLessons,
+      currentModuleIndex: progress.currentModuleIndex,
+      quizAttempts: progress.quizAttempts,
+      quizScores: progress.quizScores,
+      quizCooldowns: progress.quizCooldowns,
+      badges: progress.badges,
+      status: "active",
+      lastAccess: new Date().toISOString(),
+    });
     const enrollmentRef = doc(db, "users", currentUser.uid, "enrollments", COURSE_ID);
     setSyncState("saving");
 

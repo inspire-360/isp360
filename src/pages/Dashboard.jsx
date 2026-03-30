@@ -25,7 +25,13 @@ import OnlineUsers from "../components/OnlineUsers";
 import { useAuth } from "../contexts/AuthContext";
 import { db } from "../lib/firebase";
 import { courseCatalog, operatorNotes } from "../data/courseCatalog";
-import { createEnrollmentPayload, getPendingEnrollmentStorageKey } from "../lib/enrollment";
+import {
+  createEnrollmentPayload,
+  createLocalEnrollmentPayload,
+  getPendingEnrollmentStorageKey,
+  listLocalEnrollments,
+  writeLocalEnrollment,
+} from "../lib/enrollment";
 import { getRoleLabel } from "../data/profileOptions";
 import { getIcon } from "../utils/iconHelper";
 
@@ -56,6 +62,13 @@ export default function Dashboard() {
       }
 
       try {
+        const localEnrollments = listLocalEnrollments(currentUser.uid);
+        if (isMounted && localEnrollments.length > 0) {
+          setEnrolledCourses(
+            localEnrollments.map((item) => item.courseId || item.id).filter(Boolean),
+          );
+        }
+
         unsubscribeEnrollments = onSnapshot(
           collection(db, "users", currentUser.uid, "enrollments"),
           (enrollmentSnapshot) => {
@@ -63,7 +76,15 @@ export default function Dashboard() {
               return;
             }
 
-            setEnrolledCourses(enrollmentSnapshot.docs.map((docItem) => docItem.id));
+            const remoteIds = enrollmentSnapshot.docs.map((docItem) => docItem.id);
+            const mergedIds = Array.from(
+              new Set([
+                ...localEnrollments.map((item) => item.courseId || item.id),
+                ...remoteIds,
+              ]),
+            ).filter(Boolean);
+
+            setEnrolledCourses(mergedIds);
             setLoading(false);
           },
           (error) => {
@@ -166,11 +187,20 @@ export default function Dashboard() {
 
     try {
       const enrollmentRef = doc(db, "users", currentUser.uid, "enrollments", course.id);
+      writeLocalEnrollment(
+        currentUser.uid,
+        course.id,
+        createLocalEnrollmentPayload(course, codeUsed),
+      );
       sessionStorage.setItem(getPendingEnrollmentStorageKey(course.id), "pending");
 
-      await setDoc(enrollmentRef, createEnrollmentPayload(course, codeUsed), {
-        merge: true,
-      });
+      try {
+        await setDoc(enrollmentRef, createEnrollmentPayload(course, codeUsed), {
+          merge: true,
+        });
+      } catch (error) {
+        console.error("Enrollment sync to Firestore failed:", error);
+      }
 
       setEnrolledCourses((prev) =>
         prev.includes(course.id) ? prev : [...prev, course.id],

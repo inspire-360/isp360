@@ -18,6 +18,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { useLine } from "../contexts/LineContext";
 import { usePresence, writePresence } from "../hooks/usePresence";
 import { getRoleLabel } from "../data/profileOptions";
+import { readLocalProfileCache } from "../lib/profileCache";
 import BrandMark from "./BrandMark";
 
 const PAGE_COPY = [
@@ -72,24 +73,32 @@ export default function Layout() {
     const fallbackName =
       currentUser.displayName || currentUser.email?.split("@")[0] || "ผู้เรียน";
 
-    const unsubscribe = onSnapshot(doc(db, "users", currentUser.uid), (snapshot) => {
-      if (!snapshot.exists()) {
-        setUserData({
-          name: fallbackName,
-          role: "learner",
-          photoURL: currentUser.photoURL || "",
-        });
-        return;
-      }
-
-      const data = snapshot.data();
+    const applyUserProfile = (cloudProfile = null) => {
+      const localProfile = readLocalProfileCache(currentUser.uid) || {};
+      const mergedProfile = { ...(cloudProfile || {}), ...localProfile };
 
       setUserData({
-        name: data.name || fallbackName,
-        role: data.role || "learner",
-        photoURL: data.photoURL || currentUser.photoURL || "",
+        name: mergedProfile.name || fallbackName,
+        role: mergedProfile.role || "learner",
+        photoURL: mergedProfile.photoURL || currentUser.photoURL || "",
       });
-    });
+    };
+
+    const unsubscribe = onSnapshot(
+      doc(db, "users", currentUser.uid),
+      (snapshot) => {
+        if (!snapshot.exists()) {
+          applyUserProfile();
+          return;
+        }
+
+        applyUserProfile(snapshot.data());
+      },
+      (error) => {
+        console.error("Error reading user profile:", error);
+        applyUserProfile();
+      },
+    );
 
     return () => unsubscribe();
   }, [currentUser]);
