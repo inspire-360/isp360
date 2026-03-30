@@ -40,7 +40,7 @@ export default function Dashboard() {
   const [enrollLoading, setEnrollLoading] = useState(false);
 
   const displayName =
-    currentUser?.displayName || currentUser?.email?.split("@")[0] || "Learner";
+    currentUser?.displayName || currentUser?.email?.split("@")[0] || "ผู้เรียน";
   const displayRole = getRoleLabel(userRole || "learner");
 
   useEffect(() => {
@@ -87,17 +87,17 @@ export default function Dashboard() {
 
   const systemStats = [
     {
-      label: "Platform users",
+      label: "ผู้ใช้ในระบบ",
       value: totalUsers.toLocaleString(),
       icon: <Users size={18} />,
     },
     {
-      label: "Available pathways",
+      label: "เส้นทางที่เปิดอยู่",
       value: courseCatalog.length,
       icon: <BookOpen size={18} />,
     },
     {
-      label: "Enrolled courses",
+      label: "คอร์สที่ลงทะเบียน",
       value: enrolledCourses.length,
       icon: <GraduationCap size={18} />,
     },
@@ -126,12 +126,12 @@ export default function Dashboard() {
     }
 
     if (!accessCode.trim()) {
-      setModalError("Please enter the access code for this cohort.");
+      setModalError("กรุณากรอกรหัสเข้าร่วมรุ่นนี้");
       return;
     }
 
     if (accessCode.trim().toUpperCase() !== selectedCourse.accessCode) {
-      setModalError("That access code is incorrect.");
+      setModalError("รหัสเข้าร่วมไม่ถูกต้อง");
       return;
     }
 
@@ -157,7 +157,7 @@ export default function Dashboard() {
       navigate(course.path);
     } catch (error) {
       console.error("Enrollment failed:", error);
-      setModalError("We could not enroll you right now. Please try again.");
+      setModalError("ไม่สามารถลงทะเบียนคอร์สได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง");
     } finally {
       setEnrollLoading(false);
     }
@@ -178,14 +178,13 @@ export default function Dashboard() {
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(216,163,95,0.14),transparent_22%),radial-gradient(circle_at_bottom_left,rgba(37,99,235,0.18),transparent_24%)]" />
           <div className="relative">
             <p className="text-[11px] uppercase tracking-[0.28em] text-amber-200">
-              {displayRole} workspace
+              พื้นที่ทำงานสำหรับ{displayRole}
             </p>
             <h2 className="mt-3 font-display text-4xl font-semibold tracking-[-0.08em] text-white sm:text-5xl">
-              Welcome back, {displayName}.
+              ยินดีต้อนรับกลับ, {displayName}
             </h2>
             <p className="mt-4 max-w-2xl text-base leading-7 text-slate-300">
-              Keep your learning pathways visible, enroll into the right cohort,
-              and return to the exact space that needs attention.
+              จัดการเส้นทางการเรียนรู้ของคุณ ลงทะเบียนเข้ารุ่นที่เหมาะสม และกลับไปยังห้องเรียนที่ต้องทำต่อได้ทันที
             </p>
 
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
@@ -194,7 +193,7 @@ export default function Dashboard() {
                 onClick={() => navigate("/courses")}
                 className="primary-button"
               >
-                Open my courses
+                เปิดคอร์สของฉัน
                 <ArrowRight size={16} />
               </button>
               <button
@@ -202,7 +201,7 @@ export default function Dashboard() {
                 onClick={() => navigate("/profile")}
                 className="secondary-button border-white/10 bg-white/5 text-white hover:bg-white/10"
               >
-                Update profile
+                แก้ไขโปรไฟล์
               </button>
             </div>
 
@@ -229,7 +228,7 @@ export default function Dashboard() {
 
         <div className="surface-panel p-6">
           <p className="text-[11px] uppercase tracking-[0.28em] text-slate-500">
-            Suggested next move
+            แนะนำขั้นตอนถัดไป
           </p>
           <h3 className="mt-3 font-display text-3xl font-semibold tracking-[-0.06em] text-slate-950">
             {recommendedCourse.title}
@@ -239,10 +238,10 @@ export default function Dashboard() {
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
             <span className="rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-sm text-slate-600">
-              {recommendedCourse.modules} modules
+              {recommendedCourse.modules} ขั้นตอน
             </span>
             <span className="rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-sm text-slate-600">
-              {recommendedCourse.hours} hours
+              {recommendedCourse.hours} ชั่วโมง
             </span>
           </div>
           <button
@@ -250,7 +249,7 @@ export default function Dashboard() {
             onClick={() => openEnrollModal(recommendedCourse)}
             className="mt-8 inline-flex items-center gap-2 rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:bg-slate-800"
           >
-            {enrolledSet.has(recommendedCourse.id) ? "Continue" : "Enter pathway"}
+            {enrolledSet.has(recommendedCourse.id) ? "เรียนต่อ" : "เข้าสู่เส้นทาง"}
             <ArrowRight size={16} />
           </button>
         </div>
@@ -261,10 +260,10 @@ export default function Dashboard() {
           <div className="flex items-end justify-between gap-4">
             <div>
               <p className="text-[11px] uppercase tracking-[0.28em] text-slate-400">
-                Available learning spaces
+                พื้นที่การเรียนรู้ที่เปิดอยู่
               </p>
               <h3 className="mt-2 font-display text-3xl font-semibold tracking-[-0.06em] text-white">
-                Access the right room with less friction.
+                เลือกเข้าห้องเรียนที่เหมาะกับคุณได้ง่ายขึ้น
               </h3>
             </div>
           </div>
@@ -302,10 +301,10 @@ export default function Dashboard() {
                       </div>
                       <div className="flex flex-wrap gap-3 text-sm text-slate-300">
                         <span className="rounded-full border border-white/10 px-4 py-2">
-                          {course.modules} modules
+                          {course.modules} ขั้นตอน
                         </span>
                         <span className="rounded-full border border-white/10 px-4 py-2">
-                          {course.hours} hours
+                          {course.hours} ชั่วโมง
                         </span>
                       </div>
                     </div>
@@ -320,7 +319,7 @@ export default function Dashboard() {
                       </span>
                       {isEnrolled && (
                         <span className="rounded-full border border-emerald-300/20 bg-emerald-400/10 px-3 py-1 text-xs font-medium text-emerald-300">
-                          Enrolled
+                          ลงทะเบียนแล้ว
                         </span>
                       )}
                     </div>
@@ -343,11 +342,11 @@ export default function Dashboard() {
                     <div className="mt-6 flex flex-wrap items-center gap-4 text-sm text-slate-400">
                       <span className="inline-flex items-center gap-2">
                         <BookOpen size={16} />
-                        {course.modules} learning units
+                        {course.modules} หน่วยการเรียนรู้
                       </span>
                       <span className="inline-flex items-center gap-2">
                         <Clock size={16} />
-                        {course.hours} hours estimated
+                        ใช้เวลาประมาณ {course.hours} ชั่วโมง
                       </span>
                     </div>
 
@@ -360,17 +359,17 @@ export default function Dashboard() {
                         {isEnrolled ? (
                           <>
                             <CheckCircle2 size={16} />
-                            Continue learning
+                            เรียนต่อ
                           </>
                         ) : course.requiresCode ? (
                           <>
                             <Lock size={16} />
-                            Unlock with code
+                            ใช้รหัสเข้าร่วม
                           </>
                         ) : (
                           <>
                             <Sparkles size={16} />
-                            Enter space
+                            เข้าสู่พื้นที่เรียนรู้
                           </>
                         )}
                       </button>
@@ -387,10 +386,10 @@ export default function Dashboard() {
 
           <section className="surface-panel p-6">
             <p className="text-[11px] uppercase tracking-[0.28em] text-slate-500">
-              Operator notes
+              หมายเหตุจากทีมออกแบบระบบ
             </p>
             <h3 className="mt-3 font-display text-3xl font-semibold tracking-[-0.06em] text-slate-950">
-              Useful improvements behind the redesign.
+              สิ่งที่ปรับปรุงแล้วในเวอร์ชันนี้
             </h3>
             <div className="mt-6 space-y-3">
               {operatorNotes.map((note) => (
@@ -423,19 +422,18 @@ export default function Dashboard() {
             </button>
 
             <div className="space-y-4">
-              <div className="section-tag">Private cohort</div>
+              <div className="section-tag">รุ่นเฉพาะ</div>
               <h3 className="font-display text-3xl font-semibold tracking-[-0.06em] text-slate-950">
-                Unlock {selectedCourse.title}
+                เข้าสู่ {selectedCourse.title}
               </h3>
               <p className="text-sm leading-7 text-slate-500">
-                This pathway is protected by an access code so only the intended
-                cohort can enter. Use the code provided by the facilitator.
+                เส้นทางนี้ใช้รหัสเข้าร่วมเพื่อจำกัดเฉพาะผู้เรียนในรุ่นที่กำหนด กรุณาใช้รหัสที่ได้รับจากผู้ดูแลหรือวิทยากร
               </p>
             </div>
 
             <div className="mt-6 space-y-4">
               <label className="field-label" htmlFor="access-code">
-                Access code
+                รหัสเข้าร่วม
               </label>
               <input
                 id="access-code"
@@ -462,11 +460,11 @@ export default function Dashboard() {
                 {enrollLoading ? (
                   <>
                     <Loader2 size={16} className="animate-spin" />
-                    Enrolling...
+                    กำลังลงทะเบียน...
                   </>
                 ) : (
                   <>
-                    Enter pathway
+                    เข้าสู่เส้นทาง
                     <ArrowRight size={16} />
                   </>
                 )}

@@ -15,16 +15,16 @@ import { useLine } from "../contexts/LineContext";
 
 const HIGHLIGHTS = [
   {
-    title: "One workspace",
-    description: "Landing, login, dashboard, and settings now follow the same visual system.",
+    title: "ดีไซน์เดียวกันทั้งระบบ",
+    description: "หน้า landing, login, dashboard และ settings ใช้ภาษาการออกแบบเดียวกันมากขึ้น",
   },
   {
-    title: "Flexible entry",
-    description: "Support email, Google, and LINE without fragmenting the product flow.",
+    title: "เข้าใช้งานได้หลายช่องทาง",
+    description: "รองรับอีเมล Google และ LINE โดยไม่ทำให้ flow การใช้งานแตกเป็นหลายส่วน",
   },
   {
-    title: "Cohort-ready",
-    description: "Private access and open spaces can live together without confusing users.",
+    title: "รองรับทั้งรุ่นปิดและพื้นที่เปิด",
+    description: "ใช้ทั้งพื้นที่ที่มีรหัสและพื้นที่เปิดได้ในระบบเดียวโดยไม่ทำให้ผู้ใช้สับสน",
   },
 ];
 
@@ -42,7 +42,7 @@ export default function Login() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [isProcessingLine, setIsProcessingLine] = useState(false);
-  const [lineStatus, setLineStatus] = useState("Preparing LINE account...");
+  const [lineStatus, setLineStatus] = useState("กำลังเตรียมบัญชี LINE...");
   const [lineCompleted, setLineCompleted] = useState(false);
 
   const processingRef = useRef(false);
@@ -58,7 +58,7 @@ export default function Login() {
       processingRef.current = true;
       setIsProcessingLine(true);
       setLineCompleted(false);
-      setLineStatus("Verifying LINE profile...");
+      setLineStatus("กำลังตรวจสอบโปรไฟล์ LINE...");
       setError("");
 
       try {
@@ -70,7 +70,7 @@ export default function Login() {
         let user = auth.currentUser;
 
         if (!user) {
-          setLineStatus("Checking for an existing LINE workspace...");
+          setLineStatus("กำลังตรวจสอบบัญชี LINE ที่มีอยู่...");
 
           try {
             const credential = await signInWithEmailAndPassword(
@@ -84,7 +84,7 @@ export default function Login() {
               loginError.code === "auth/user-not-found" ||
               loginError.code === "auth/invalid-credential"
             ) {
-              setLineStatus("Creating a new LINE workspace...");
+              setLineStatus("กำลังสร้างบัญชี LINE ใหม่...");
               const credential = await createUserWithEmailAndPassword(
                 auth,
                 virtualEmail,
@@ -97,7 +97,7 @@ export default function Login() {
           }
         }
 
-        setLineStatus("Updating profile details...");
+        setLineStatus("กำลังอัปเดตข้อมูลโปรไฟล์...");
         await updateProfile(user, {
           displayName: lineProfile.displayName,
           photoURL: lineProfile.pictureUrl,
@@ -114,7 +114,7 @@ export default function Login() {
           lastLogin: new Date(),
         };
 
-        setLineStatus("Saving access data...");
+        setLineStatus("กำลังบันทึกข้อมูลเข้าใช้งาน...");
 
         if (!userSnapshot.exists()) {
           await setDoc(userRef, {
@@ -135,13 +135,13 @@ export default function Login() {
           await setDoc(userRef, lineData, { merge: true });
         }
 
-        setLineStatus("LINE connected. Entering the workspace...");
+        setLineStatus("เชื่อมต่อ LINE สำเร็จ กำลังเข้าสู่ระบบ...");
         setLineCompleted(true);
         await new Promise((resolve) => setTimeout(resolve, 450));
         navigate("/dashboard");
       } catch (syncError) {
         console.error("LINE Sync Error:", syncError);
-        setError(`LINE sign-in failed: ${syncError.message}`);
+        setError(`เข้าสู่ระบบด้วย LINE ไม่สำเร็จ: ${syncError.message}`);
         processingRef.current = false;
         setIsProcessingLine(false);
         setLineCompleted(false);
@@ -200,7 +200,7 @@ export default function Login() {
       navigate("/dashboard");
     } catch (googleError) {
       console.error("Google Login Error:", googleError);
-      setError(`Google sign-in failed: ${googleError.message}`);
+      setError(`เข้าสู่ระบบด้วย Google ไม่สำเร็จ: ${googleError.message}`);
     }
   };
 
@@ -220,7 +220,7 @@ export default function Login() {
       navigate("/dashboard");
     } catch (loginError) {
       console.error(loginError);
-      setError("Email or password is incorrect.");
+      setError("อีเมลหรือรหัสผ่านไม่ถูกต้อง");
     } finally {
       setLoading(false);
     }
@@ -228,11 +228,11 @@ export default function Login() {
 
   return (
     <AuthShell
-      eyebrow="Member access"
-      title="Sign in to the redesigned workspace"
-      description="Use the sign-in method that fits your account and continue into the updated learning environment."
-      asideTitle="A calmer sign-in surface for a more focused first step."
-      asideCopy="The new entry flow keeps orientation clear, supports social login, and carries the same premium visual language into the signed-in product."
+      eyebrow="เข้าใช้งานสมาชิก"
+      title="เข้าสู่ InSPIRE Workspace"
+      description="เลือกวิธีเข้าสู่ระบบที่เหมาะกับบัญชีของคุณ แล้วเรียนต่อในสภาพแวดล้อมเวอร์ชันใหม่"
+      asideTitle="หน้าเข้าสู่ระบบที่ชัดขึ้น เพื่อเริ่มต้นได้อย่างมั่นใจมากขึ้น"
+      asideCopy="ทางเข้าระบบเวอร์ชันใหม่ช่วยให้ผู้ใช้ไม่หลงทาง รองรับ social login และรักษาภาษาการออกแบบเดียวกันตลอดทั้งแพลตฟอร์ม"
       highlights={HIGHLIGHTS}
     >
       {isProcessingLine ? (
@@ -248,7 +248,7 @@ export default function Login() {
             </div>
           </div>
           <h3 className="mt-6 font-display text-2xl font-semibold tracking-[-0.05em] text-slate-950">
-            {lineCompleted ? "LINE connected" : "Connecting LINE"}
+            {lineCompleted ? "เชื่อมต่อ LINE สำเร็จ" : "กำลังเชื่อมต่อ LINE"}
           </h3>
           <p className="mt-3 max-w-sm text-sm leading-7 text-slate-500">
             {lineStatus}
@@ -265,7 +265,7 @@ export default function Login() {
           <form onSubmit={handleLogin} className="space-y-5">
             <div>
               <label htmlFor="email" className="field-label">
-                Email
+                อีเมล
               </label>
               <div className="relative">
                 <Mail
@@ -286,7 +286,7 @@ export default function Login() {
 
             <div>
               <label htmlFor="password" className="field-label">
-                Password
+                รหัสผ่าน
               </label>
               <div className="relative">
                 <Lock
@@ -299,7 +299,7 @@ export default function Login() {
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
                   className="field-input pl-11"
-                  placeholder="Enter your password"
+                  placeholder="กรอกรหัสผ่าน"
                   required
                 />
               </div>
@@ -309,11 +309,11 @@ export default function Login() {
               {loading ? (
                 <>
                   <Loader2 size={16} className="animate-spin" />
-                  Signing in...
+                  กำลังเข้าสู่ระบบ...
                 </>
               ) : (
                 <>
-                  Continue to dashboard
+                  เข้าสู่แดชบอร์ด
                   <ArrowRight size={16} />
                 </>
               )}
@@ -323,7 +323,7 @@ export default function Login() {
           <div className="my-6 flex items-center gap-4">
             <div className="h-px flex-1 bg-slate-200" />
             <span className="text-xs uppercase tracking-[0.28em] text-slate-400">
-              Or use
+              หรือใช้
             </span>
             <div className="h-px flex-1 bg-slate-200" />
           </div>
@@ -335,7 +335,7 @@ export default function Login() {
               className="flex items-center justify-center gap-2 rounded-2xl border border-[#06C755]/20 bg-[#06C755]/10 px-4 py-3 text-sm font-semibold text-[#06C755] transition hover:bg-[#06C755]/15"
             >
               <MessageCircle size={18} />
-              Continue with LINE
+              ใช้งานด้วย LINE
             </button>
 
             <button
@@ -361,14 +361,14 @@ export default function Login() {
                   d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1A11 11 0 0 0 2.18 7.07l3.66 2.84C6.71 7.31 9.14 5.38 12 5.38Z"
                 />
               </svg>
-              Continue with Google
+              ใช้งานด้วย Google
             </button>
           </div>
 
           <p className="mt-8 text-center text-sm text-slate-500">
-            Need a new account?{" "}
+            ยังไม่มีบัญชีใช่ไหม?{" "}
             <Link to="/register" className="font-semibold text-slate-950">
-              Create one here
+              สร้างบัญชีได้ที่นี่
             </Link>
           </p>
         </>

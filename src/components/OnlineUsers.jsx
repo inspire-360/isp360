@@ -12,10 +12,10 @@ import { getRoleLabel } from "../data/profileOptions";
 
 function getPresenceMeta(user) {
   if (user.isOnline) {
-    return { label: "Live now", tone: "text-emerald-300" };
+    return { label: "กำลังใช้งาน", tone: "text-emerald-300" };
   }
 
-  return { label: "Recently active", tone: "text-slate-400" };
+  return { label: "เพิ่งใช้งานล่าสุด", tone: "text-slate-400" };
 }
 
 export default function OnlineUsers() {
@@ -59,22 +59,22 @@ export default function OnlineUsers() {
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-[11px] uppercase tracking-[0.28em] text-slate-400">
-            Cohort presence
+            สถานะผู้ใช้งาน
           </p>
           <h3 className="mt-2 flex items-center gap-2 font-display text-2xl font-semibold tracking-[-0.05em] text-white">
             <Users size={20} className="text-amber-200" />
-            Live learners
+            ผู้ใช้งานในระบบ
           </h3>
         </div>
         <div className="rounded-full border border-emerald-300/15 bg-emerald-300/10 px-3 py-1 text-xs font-medium text-emerald-200">
-          {onlineCount} online
+          ออนไลน์ {onlineCount} คน
         </div>
       </div>
 
       <div className="mt-6 space-y-3">
         {users.length === 0 ? (
           <div className="rounded-[24px] border border-white/10 bg-white/5 p-4 text-sm text-slate-300">
-            Presence will appear here once users start syncing their sessions.
+            สถานะผู้ใช้งานจะปรากฏที่นี่เมื่อเริ่มมีการซิงก์ session เข้าระบบ
           </div>
         ) : (
           users.map((user) => {
@@ -107,7 +107,7 @@ export default function OnlineUsers() {
 
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold text-white">
-                    {user.name || "Unknown user"}
+                    {user.name || "ผู้ใช้ไม่ระบุชื่อ"}
                   </p>
                   <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
                     <span className="text-slate-400">

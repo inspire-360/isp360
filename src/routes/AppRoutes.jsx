@@ -20,9 +20,9 @@ function RouteLoader() {
       <div className="dark-panel flex max-w-md items-center gap-4 p-5">
         <Loader2 size={24} className="animate-spin text-amber-200" />
         <div>
-          <p className="font-semibold text-white">Loading workspace</p>
+          <p className="font-semibold text-white">กำลังโหลดพื้นที่ทำงาน</p>
           <p className="mt-1 text-sm text-slate-300">
-            Preparing the next screen for you.
+            ระบบกำลังเตรียมหน้าถัดไปให้คุณ
           </p>
         </div>
       </div>
@@ -111,9 +111,7 @@ export default function AppRoutes() {
           path="/course/ai-era"
           element={
             <CourseGuard courseId="course-ai">
-              {renderLazy(
-                <Construction message="InSPIRE 360 in AI Era is coming soon." />,
-              )}
+              {renderLazy(<Construction message="InSPIRE 360 in AI Era กำลังอยู่ระหว่างพัฒนา" />)}
             </CourseGuard>
           }
         />

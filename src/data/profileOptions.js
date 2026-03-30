@@ -19,11 +19,11 @@ export const positionOptions = [
 ];
 
 const roleLabels = {
-  learner: "Learner",
-  teacher: "Teacher",
-  admin: "Admin",
+  learner: "ผู้เรียน",
+  teacher: "ครู",
+  admin: "ผู้ดูแลระบบ",
 };
 
 export function getRoleLabel(role) {
-  return roleLabels[role] || "Learner";
+  return roleLabels[role] || "ผู้เรียน";
 }

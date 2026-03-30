@@ -9,7 +9,7 @@ import { getIcon } from "../utils/iconHelper";
 
 function formatDate(value) {
   if (!value?.toDate) {
-    return "New enrollment";
+    return "เพิ่งลงทะเบียน";
   }
 
   return value.toDate().toLocaleDateString();
@@ -83,14 +83,13 @@ export default function MyCourses() {
     <div className="page-wrap space-y-6">
       <section className="dark-panel p-6 sm:p-8">
         <p className="text-[11px] uppercase tracking-[0.28em] text-amber-200">
-          My learning paths
+          เส้นทางการเรียนรู้ของฉัน
         </p>
         <h2 className="mt-3 font-display text-4xl font-semibold tracking-[-0.08em] text-white">
-          Everything you have already unlocked.
+          ทุกคอร์สที่คุณปลดล็อกแล้ว
         </h2>
         <p className="mt-4 max-w-2xl text-base leading-7 text-slate-300">
-          Return to the right course quickly, keep track of your active spaces,
-          and reduce the friction of finding where to continue.
+          กลับมาเรียนต่อในคอร์สที่ใช่ได้เร็วขึ้น มองเห็นพื้นที่ที่กำลังใช้งาน และหา step ถัดไปได้ง่ายขึ้น
         </p>
       </section>
 
@@ -123,10 +122,10 @@ export default function MyCourses() {
                     </div>
                     <div className="flex flex-wrap gap-3 text-sm text-slate-300">
                       <span className="rounded-full border border-white/10 px-4 py-2">
-                        {course.modules} modules
+                        {course.modules} ขั้นตอน
                       </span>
                       <span className="rounded-full border border-white/10 px-4 py-2">
-                        Active
+                        กำลังใช้งาน
                       </span>
                     </div>
                   </div>
@@ -140,7 +139,7 @@ export default function MyCourses() {
                   <div className="mt-6 grid gap-4 sm:grid-cols-2">
                     <div className="rounded-[22px] border border-white/10 bg-white/5 px-4 py-4">
                       <div className="text-xs uppercase tracking-[0.24em] text-slate-400">
-                        Enrolled
+                        วันที่ลงทะเบียน
                       </div>
                       <div className="mt-2 text-sm text-slate-200">
                         {formatDate(course.enrollment.enrolledAt)}
@@ -148,7 +147,7 @@ export default function MyCourses() {
                     </div>
                     <div className="rounded-[22px] border border-white/10 bg-white/5 px-4 py-4">
                       <div className="text-xs uppercase tracking-[0.24em] text-slate-400">
-                        Last access
+                        เข้าใช้ล่าสุด
                       </div>
                       <div className="mt-2 text-sm text-slate-200">
                         {formatDate(course.enrollment.lastAccess)}
@@ -159,10 +158,10 @@ export default function MyCourses() {
                   <div className="mt-6 flex flex-wrap items-center gap-4 text-sm text-slate-400">
                     <span className="inline-flex items-center gap-2">
                       <Clock size={16} />
-                      {course.hours} hours estimated
+                      ใช้เวลาประมาณ {course.hours} ชั่วโมง
                     </span>
                     <span className="rounded-full border border-emerald-300/15 bg-emerald-400/10 px-3 py-1 text-xs font-medium text-emerald-300">
-                      {course.enrollment.status || "active"}
+                      {course.enrollment.status === "active" ? "กำลังเรียน" : course.enrollment.status || "กำลังเรียน"}
                     </span>
                   </div>
 
@@ -171,7 +170,7 @@ export default function MyCourses() {
                     onClick={() => navigate(course.path)}
                     className="mt-8 inline-flex items-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-semibold text-slate-950 transition hover:-translate-y-0.5 hover:bg-slate-100"
                   >
-                    Continue course
+                    เรียนต่อ
                     <ArrowRight size={16} />
                   </button>
                 </div>
@@ -185,18 +184,17 @@ export default function MyCourses() {
             <Search size={36} />
           </div>
           <h3 className="mt-6 font-display text-3xl font-semibold tracking-[-0.06em] text-slate-950">
-            No courses yet
+            ยังไม่มีคอร์สที่ลงทะเบียน
           </h3>
           <p className="mx-auto mt-3 max-w-lg text-sm leading-7 text-slate-500">
-            You have not entered a pathway yet. Head back to the dashboard to
-            unlock a course and start your first learning space.
+            คุณยังไม่ได้เข้าสู่เส้นทางการเรียนรู้ใด ๆ กลับไปที่แดชบอร์ดเพื่อปลดล็อกคอร์สแรกของคุณได้เลย
           </p>
           <button
             type="button"
             onClick={() => navigate("/dashboard")}
             className="primary-button mt-8"
           >
-            Explore pathways
+            สำรวจเส้นทางการเรียนรู้
             <ArrowRight size={16} />
           </button>
         </section>

@@ -21,39 +21,39 @@ import BrandMark from "./BrandMark";
 const NAV_ITEMS = [
   {
     icon: Home,
-    label: "Dashboard",
+    label: "แดชบอร์ด",
     path: "/dashboard",
-    description: "Overview, access, and live activity",
+    description: "ภาพรวม สิทธิ์เข้าใช้ และการใช้งานล่าสุด",
   },
   {
     icon: BookOpen,
-    label: "My Courses",
+    label: "คอร์สของฉัน",
     path: "/courses",
-    description: "Your enrolled learning paths",
+    description: "เส้นทางการเรียนรู้ที่คุณลงทะเบียนแล้ว",
   },
   {
     icon: User,
-    label: "Profile",
+    label: "โปรไฟล์",
     path: "/profile",
-    description: "Identity and account settings",
+    description: "ข้อมูลส่วนตัวและการตั้งค่าบัญชี",
   },
 ];
 
 const PAGE_COPY = [
   {
     match: (pathname) => pathname.startsWith("/dashboard"),
-    title: "Learning Workspace",
-    description: "Track cohorts, unlock spaces, and keep the next action obvious.",
+    title: "พื้นที่ทำงานการเรียนรู้",
+    description: "ติดตามรุ่นผู้เรียน ปลดล็อกพื้นที่ และเห็นขั้นตอนถัดไปได้ชัดเจน",
   },
   {
     match: (pathname) => pathname.startsWith("/courses"),
-    title: "Active Learning Paths",
-    description: "Everything you have joined, with progress and return points in one place.",
+    title: "เส้นทางการเรียนรู้ที่ใช้งานอยู่",
+    description: "รวมทุกคอร์สที่คุณเข้าร่วม พร้อมความคืบหน้าและจุดกลับมาเรียนต่อในที่เดียว",
   },
   {
     match: (pathname) => pathname.startsWith("/profile"),
-    title: "Profile Settings",
-    description: "Keep your identity, school, and account details current.",
+    title: "ตั้งค่าโปรไฟล์",
+    description: "อัปเดตข้อมูลส่วนตัว สถานศึกษา และรายละเอียดบัญชีให้เป็นปัจจุบัน",
   },
 ];
 
@@ -68,7 +68,7 @@ export default function Layout() {
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [showFocusNotice, setShowFocusNotice] = useState(false);
   const [userData, setUserData] = useState({
-    name: currentUser?.displayName || currentUser?.email?.split("@")[0] || "Learner",
+    name: currentUser?.displayName || currentUser?.email?.split("@")[0] || "ผู้เรียน",
     role: "learner",
     photoURL: currentUser?.photoURL || "",
   });
@@ -79,7 +79,7 @@ export default function Layout() {
     }
 
     const fallbackName =
-      currentUser.displayName || currentUser.email?.split("@")[0] || "Learner";
+      currentUser.displayName || currentUser.email?.split("@")[0] || "ผู้เรียน";
 
     const unsubscribe = onSnapshot(doc(db, "users", currentUser.uid), (snapshot) => {
       if (!snapshot.exists()) {
@@ -158,10 +158,9 @@ export default function Layout() {
               <AlertTriangle size={18} />
             </div>
             <div>
-              <p className="font-semibold">Focus tracking resumed</p>
+              <p className="font-semibold">กลับเข้าสู่โหมดใช้งานแล้ว</p>
               <p className="mt-1 text-xs leading-5 text-slate-300">
-                Welcome back. The workspace is active again and your presence is
-                being updated.
+                ยินดีต้อนรับกลับครับ ระบบกำลังอัปเดตสถานะการใช้งานของคุณอีกครั้ง
               </p>
             </div>
           </div>
@@ -196,7 +195,7 @@ export default function Layout() {
 
           <div className="mt-5 rounded-[28px] border border-white/10 bg-white/5 p-4">
             <p className="text-[11px] uppercase tracking-[0.28em] text-amber-200">
-              Current Space
+              พื้นที่ปัจจุบัน
             </p>
             <h2 className="mt-2 font-display text-2xl font-semibold tracking-[-0.06em] text-white">
               {pageMeta.title}
@@ -280,7 +279,7 @@ export default function Layout() {
               className="flex w-full items-center justify-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-200 transition hover:border-red-300/20 hover:bg-red-400/10 hover:text-red-100"
             >
               <LogOut size={16} />
-              Sign out
+              ออกจากระบบ
             </button>
           </div>
         </aside>
@@ -307,7 +306,7 @@ export default function Layout() {
               </div>
 
               <div className="hidden rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs text-slate-300 md:block">
-                {getRoleLabel(userData.role)} account active
+                บัญชี{getRoleLabel(userData.role)}กำลังใช้งาน
               </div>
             </div>
           </header>

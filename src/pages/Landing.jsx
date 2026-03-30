@@ -56,10 +56,10 @@ export default function Landing() {
               to="/login"
               className="hidden rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-slate-200 transition hover:bg-white/10 sm:inline-flex"
             >
-              Sign in
+              เข้าสู่ระบบ
             </Link>
             <Link to="/register" className="primary-button">
-              Start now
+              เริ่มใช้งาน
               <ArrowRight size={16} />
             </Link>
           </div>
@@ -80,27 +80,24 @@ export default function Landing() {
             variants={reveal}
             className="mx-auto w-full max-w-xl lg:mx-0"
           >
-            <div className="glass-chip">Editorial learning command center</div>
+            <div className="glass-chip">แพลตฟอร์มการเรียนรู้สำหรับครูและผู้เรียน</div>
             <h1 className="mt-6 font-display text-5xl font-semibold tracking-[-0.09em] text-white sm:text-6xl lg:text-7xl">
-              InSPIRE 360 turns course access into a calm, premium learning
-              experience.
+              InSPIRE 360 ทำให้การเข้าถึงคอร์สเป็นประสบการณ์การเรียนรู้ที่ชัดเจน ทันสมัย และใช้งานง่าย
             </h1>
             <p className="mt-6 max-w-lg text-base leading-8 text-slate-300 sm:text-lg">
-              From teacher cohorts to student spaces and AI-ready pathways, the
-              platform now feels like one intentional system instead of a set of
-              disconnected screens.
+              ตั้งแต่เส้นทางครู พื้นที่ผู้เรียน ไปจนถึงคอร์ส AI เวอร์ชันใหม่ ทุกหน้าถูกออกแบบให้เป็นระบบเดียวกันและต่อเนื่องกันมากขึ้น
             </p>
 
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
               <Link to="/register" className="primary-button">
-                Create your account
+                สร้างบัญชี
                 <ArrowRight size={16} />
               </Link>
               <a
                 href="#pathways"
                 className="secondary-button border-white/10 bg-white/5 text-white hover:bg-white/10"
               >
-                Explore pathways
+                สำรวจเส้นทางการเรียนรู้
                 <PlayCircle size={16} />
               </a>
             </div>
@@ -136,14 +133,14 @@ export default function Landing() {
                 <div className="flex items-center justify-between gap-4">
                   <div>
                     <p className="text-[11px] uppercase tracking-[0.28em] text-amber-200">
-                      Today&apos;s operating picture
+                      ภาพรวมแพลตฟอร์มวันนี้
                     </p>
                     <h2 className="mt-2 font-display text-3xl font-semibold tracking-[-0.06em] text-white">
-                      One entrance, three purposeful pathways.
+                      หนึ่งทางเข้า สามเส้นทางการเรียนรู้ที่ชัดเจน
                     </h2>
                   </div>
                   <div className="hidden rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs text-slate-300 sm:block">
-                    Mobile-ready workspace
+                    พร้อมใช้งานบนมือถือ
                   </div>
                 </div>
 
@@ -176,7 +173,7 @@ export default function Landing() {
                           </p>
                         </div>
                         <div className="text-sm text-slate-400">
-                          {course.modules} modules
+                          {course.modules} ขั้นตอน
                         </div>
                       </div>
                     </MotionDiv>
@@ -201,16 +198,13 @@ export default function Landing() {
         >
           <div className="max-w-2xl">
             <p className="section-tag border-amber-300/20 bg-amber-300/10 text-amber-200">
-              Learning pathways
+              เส้นทางการเรียนรู้
             </p>
             <h2 className="mt-5 font-display text-4xl font-semibold tracking-[-0.08em] text-white">
-              Each section has one job: guide, support, or prepare the next
-              move.
+              ทุกส่วนมีหน้าที่ชัดเจน ทั้งการนำทาง สนับสนุน และพาไปยังขั้นตอนถัดไป
             </h2>
             <p className="mt-4 text-base leading-7 text-slate-300">
-              The first screen establishes the platform clearly. The next
-              sections explain the pathways without clutter and give every route
-              a distinct purpose.
+              หน้าหลักอธิบายแพลตฟอร์มให้ชัด ส่วนถัดไปช่วยให้เห็นเส้นทางแต่ละแบบอย่างเป็นระเบียบและไม่รกสายตา
             </p>
           </div>
 
@@ -245,10 +239,10 @@ export default function Landing() {
                       </div>
                       <div className="flex flex-wrap gap-3 text-sm text-slate-300">
                         <span className="rounded-full border border-white/10 px-4 py-2">
-                          {course.modules} modules
+                          {course.modules} ขั้นตอน
                         </span>
                         <span className="rounded-full border border-white/10 px-4 py-2">
-                          {course.hours} learning hours
+                          ใช้เวลาประมาณ {course.hours} ชั่วโมง
                         </span>
                       </div>
                     </div>
@@ -286,14 +280,13 @@ export default function Landing() {
             className="max-w-xl"
           >
             <p className="section-tag border-amber-300/20 bg-amber-300/10 text-amber-200">
-              Operating logic
+              หลักคิดของแพลตฟอร์ม
             </p>
             <h2 className="mt-5 font-display text-4xl font-semibold tracking-[-0.08em] text-white">
-              The redesign is built around entry, clarity, and useful motion.
+              การออกแบบใหม่นี้ยึดหลักทางเข้าใช้งานที่ชัดเจน ลำดับข้อมูลที่เข้าใจง่าย และ motion ที่มีประโยชน์
             </h2>
             <p className="mt-4 text-base leading-7 text-slate-300">
-              Instead of decorative UI noise, each screen now reinforces
-              orientation and the next best action.
+              แทนที่จะใส่ลูกเล่นที่รบกวนสายตา แต่ละหน้าถูกออกแบบให้ช่วยจัดระเบียบและพาผู้ใช้ไปยัง action ที่เหมาะสม
             </p>
           </MotionDiv>
 
@@ -326,14 +319,13 @@ export default function Landing() {
         <div className="page-wrap flex flex-col items-start justify-between gap-6 rounded-[32px] border border-white/10 bg-white/5 p-8 lg:flex-row lg:items-center">
           <div className="max-w-2xl">
             <p className="section-tag border-amber-300/20 bg-amber-300/10 text-amber-200">
-              Ready to enter
+              พร้อมเริ่มใช้งาน
             </p>
             <h2 className="mt-4 font-display text-4xl font-semibold tracking-[-0.07em] text-white">
-              Bring your cohort into a cleaner, more intentional digital space.
+              พารุ่นเรียนของคุณเข้าสู่พื้นที่ดิจิทัลที่เป็นระเบียบ ใช้งานง่าย และตั้งใจออกแบบมากขึ้น
             </h2>
             <p className="mt-3 text-sm leading-7 text-slate-300">
-              Sign in to continue, or create a new account and move straight into
-              the redesigned workspace.
+              เข้าสู่ระบบเพื่อเรียนต่อ หรือสร้างบัญชีใหม่แล้วเข้าสู่ workspace เวอร์ชันภาษาไทยที่ออกแบบใหม่ได้ทันที
             </p>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row">
@@ -341,10 +333,10 @@ export default function Landing() {
               to="/login"
               className="secondary-button border-white/10 bg-white/5 text-white hover:bg-white/10"
             >
-              Sign in
+              เข้าสู่ระบบ
             </Link>
             <Link to="/register" className="primary-button">
-              Create account
+              สร้างบัญชี
               <ArrowRight size={16} />
             </Link>
           </div>

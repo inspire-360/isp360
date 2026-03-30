@@ -12,13 +12,13 @@ export default function Construction({ message }) {
           <AlertCircle size={36} />
         </div>
         <p className="mt-6 text-[11px] uppercase tracking-[0.28em] text-amber-200">
-          Coming soon
+          เร็ว ๆ นี้
         </p>
         <h2 className="mt-3 font-display text-4xl font-semibold tracking-[-0.08em] text-white">
-          This space is still being prepared.
+          พื้นที่นี้กำลังอยู่ระหว่างเตรียมระบบ
         </h2>
         <p className="mt-4 text-base leading-7 text-slate-300">
-          {message || "We are still shaping this pathway and will open it soon."}
+          {message || "เรากำลังพัฒนาเส้นทางนี้เพิ่มเติม และจะเปิดให้ใช้งานเร็ว ๆ นี้"}
         </p>
         <button
           type="button"
@@ -26,7 +26,7 @@ export default function Construction({ message }) {
           className="secondary-button mt-8 border-white/10 bg-white/5 text-white hover:bg-white/10"
         >
           <ArrowLeft size={16} />
-          Go back
+          ย้อนกลับ
         </button>
       </section>
     </div>

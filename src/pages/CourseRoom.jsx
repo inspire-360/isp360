@@ -1,771 +1,2383 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { 
-  Menu, ChevronLeft, CheckCircle, PlayCircle, FileText, 
-  Award, ChevronDown, ChevronRight, CheckSquare, PenTool, 
-  RotateCcw, ArrowRight, Lock, AlertTriangle, Loader2, ClipboardCheck, Sparkles
-} from 'lucide-react';
-import { teacherCourseData } from '../data/teacherCourse';
-import { getPreTestQuestions, getPostTestQuestions } from '../data/standardizedTests'; 
-import { getIcon } from '../utils/iconHelper';
-import SWOTBoard from '../components/activities/SWOTBoard';
-import { db } from '../lib/firebase';
-import { doc, getDoc, updateDoc, setDoc, arrayUnion } from 'firebase/firestore';
-import { useAuth } from '../contexts/AuthContext';
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+import { AnimatePresence } from "framer-motion";
+import {
+  ArrowRight,
+  CheckCircle2,
+  ChevronDown,
+  ChevronRight,
+  Circle,
+  Clock3,
+  Loader2,
+  Lock,
+  Menu,
+  Sparkles,
+  Trophy,
+  X,
+} from "lucide-react";
+import { doc, getDoc, setDoc } from "firebase/firestore";
+import SwotBalanceChart from "../components/activities/SwotBalanceChart";
+import { useAuth } from "../contexts/AuthContext";
+import { db } from "../lib/firebase";
+import { insightDimensions, swotBuckets, teacherCourseData } from "../data/teacherCourse";
+import {
+  createDefaultTeacherCourseState,
+  createDefaultTeacherProgress,
+  getQuizCooldownRemaining,
+  getQuizQuestionsById,
+} from "../data/teacherCourseState";
+import {
+  buildFinalCertificateSvg,
+  buildModuleReportSvg,
+  downloadSvgFile,
+  makeUniqueId,
+} from "../lib/teacherCourseReports";
+import {
+  MODULE_STATE_KEY_BY_ID,
+  PLC_TEACHER_POOL,
+  buildInsightTokens,
+  buildQuizProgress,
+  createExpandedMap,
+  deepMerge,
+  formatCountdown,
+  getFirstIncompleteLessonIndex,
+  getModuleIndexFromPath,
+  getStrategyGuidance,
+  getStrategyType,
+  isLessonLocked,
+  normalizeProgress,
+  withCompletedLesson,
+} from "../lib/teacherCourseHelpers";
+import { getIcon } from "../utils/iconHelper";
 
-const INSIGHT_DIMENSIONS = [
-  { key: 'learners', label: 'Learners' },
-  { key: 'learning_style', label: 'Learning Style' },
-  { key: 'community', label: 'Community' },
-  { key: 'pain_points', label: 'Pain Points' },
-  { key: 'opportunities', label: 'Opportunities' },
-  { key: 'passion', label: 'Passion' },
-  { key: 'threats', label: 'Threats' },
-  { key: 'vision', label: 'Vision' },
-  { key: 'small_wins', label: 'Small Wins' }
-];
+const COURSE_ID = teacherCourseData.id;
+const STAR_COPY = ["ยังไม่ชัด", "พอเห็นทาง", "เริ่มใช่", "ดีมาก", "โดดเด่น"];
+const pageReveal = {
+  hidden: { opacity: 0, y: 18 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.35, ease: "easeOut" } },
+};
 
 export default function CourseRoom() {
   const { currentUser } = useAuth();
   const navigate = useNavigate();
-  
-  // --- 1. Hooks ---
-  const [isSidebarOpen, setSidebarOpen] = useState(true);
-  const [expandedModules, setExpandedModules] = useState({});
-  const [loading, setLoading] = useState(true);
+  const location = useLocation();
 
+  const [loading, setLoading] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [expandedModules, setExpandedModules] = useState({});
   const [activeModuleIndex, setActiveModuleIndex] = useState(0);
   const [activeLessonIndex, setActiveLessonIndex] = useState(0);
-  
-  const [progressData, setProgressData] = useState({
-    completedLessons: [],
-    currentModuleIndex: 0,
-    postTestAttempts: 0,
-    score: 0
-  });
-
+  const [courseState, setCourseState] = useState(createDefaultTeacherCourseState);
+  const [progress, setProgress] = useState(createDefaultTeacherProgress);
   const [quizQuestions, setQuizQuestions] = useState([]);
   const [quizAnswers, setQuizAnswers] = useState({});
   const [quizSubmitted, setQuizSubmitted] = useState(false);
   const [quizScore, setQuizScore] = useState(0);
-  const [moduleOneState, setModuleOneState] = useState({
-    dimensions: {},
-    ratings: {},
-    swot: { strengths: [], weaknesses: [], opportunities: [], threats: [] },
-    strategies: [],
-    strategyScores: {},
-    selectedStrategy: '',
-    actionPlan: { plan: '', do: '', check: '', act: '' },
-    posttestScore: null
+  const [syncState, setSyncState] = useState("idle");
+  const [feedback, setFeedback] = useState(null);
+  const [swotDrafts, setSwotDrafts] = useState({
+    strengths: "",
+    weaknesses: "",
+    opportunities: "",
+    threats: "",
   });
-  const [missionDraft, setMissionDraft] = useState('');
+  const [towsDraft, setTowsDraft] = useState({
+    internalBucket: "strengths",
+    internalValue: "",
+    externalBucket: "opportunities",
+    externalValue: "",
+    title: "",
+    description: "",
+  });
+  const [initialized, setInitialized] = useState(false);
 
-  const courseId = "course-teacher";
-  const currentCourse = teacherCourseData || { modules: [] };
-  const currentModule = currentCourse.modules?.[activeModuleIndex];
+  const feedbackTimeoutRef = useRef(null);
+  const initialPathRef = useRef(location.pathname);
+
+  const currentModule = teacherCourseData.modules[activeModuleIndex];
   const currentLesson = currentModule?.lessons?.[activeLessonIndex];
+  const currentUserName =
+    currentUser?.displayName || currentUser?.email?.split("@")[0] || "ครูผู้เรียน";
+  const currentQuizId =
+    currentLesson?.type === "quiz" ? currentLesson.content?.quizId : "";
+  const cooldownRemaining = currentQuizId
+    ? getQuizCooldownRemaining(progress.quizCooldowns, currentQuizId)
+    : 0;
+  const totalLessons = teacherCourseData.modules.reduce(
+    (sum, module) => sum + module.lessons.length,
+    0,
+  );
+  const overallProgress = Math.round(
+    (progress.completedLessons.length / totalLessons) * 100,
+  );
+  const moduleCompletionCount = currentModule
+    ? currentModule.lessons.filter((lesson) =>
+        progress.completedLessons.includes(lesson.id),
+      ).length
+    : 0;
+  const currentModuleKey = currentModule
+    ? MODULE_STATE_KEY_BY_ID[currentModule.id]
+    : null;
+  const insightTokens = useMemo(
+    () => buildInsightTokens(courseState.module1.dimensions, courseState.module1.swot),
+    [courseState.module1.dimensions, courseState.module1.swot],
+  );
+  const swotChartValues = useMemo(
+    () =>
+      swotBuckets.map((bucket, index) => ({
+        label: bucket.thaiLabel,
+        value: courseState.module1.swot[bucket.key].length,
+        color: ["#6366f1", "#f97316", "#22c55e", "#ef4444"][index],
+      })),
+    [courseState.module1.swot],
+  );
 
-  // --- 2. Effects ---
   useEffect(() => {
-    const loadProgress = async () => {
-      if (!currentUser) return;
-      try {
-        const enrollRef = doc(db, "users", currentUser.uid, "enrollments", courseId);
-        const docSnap = await getDoc(enrollRef);
-
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          setProgressData({
-            completedLessons: data.completedLessons || [],
-            currentModuleIndex: data.currentModuleIndex || 0,
-            postTestAttempts: data.postTestAttempts || 0,
-            score: data.score || 0
-          });
-          
-          const lastModuleIdx = data.currentModuleIndex || 0;
-          if (teacherCourseData.modules && lastModuleIdx < teacherCourseData.modules.length) {
-              setExpandedModules({ [lastModuleIdx]: true });
-              setActiveModuleIndex(lastModuleIdx);
-          }
-        } else {
-          await setDoc(enrollRef, {
-            enrolledAt: new Date(),
-            completedLessons: [],
-            currentModuleIndex: 0, 
-            postTestAttempts: 0,
-            status: 'active'
-          });
-        }
-      } catch (error) {
-        console.error("Error loading progress:", error);
-      } finally {
-        setLoading(false);
+    const timeoutRef = feedbackTimeoutRef.current;
+    return () => {
+      if (timeoutRef) {
+        window.clearTimeout(timeoutRef);
       }
     };
-    loadProgress();
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadCourseState() {
+      if (!currentUser) {
+        return;
+      }
+
+      setLoading(true);
+      const defaultState = createDefaultTeacherCourseState();
+      const defaultProgress = createDefaultTeacherProgress();
+      const enrollmentRef = doc(db, "users", currentUser.uid, "enrollments", COURSE_ID);
+
+      try {
+        const [snapshot, localDraft] = await Promise.all([
+          getDoc(enrollmentRef),
+          Promise.resolve(readLocalDraft(currentUser.uid)),
+        ]);
+
+        const remoteData = snapshot.exists() ? snapshot.data() : {};
+        if (!snapshot.exists()) {
+          await setDoc(
+            enrollmentRef,
+            {
+              enrolledAt: new Date(),
+              status: "active",
+              lastAccess: new Date(),
+              courseState: defaultState,
+              completedLessons: [],
+              currentModuleIndex: 0,
+              quizAttempts: {},
+              quizScores: {},
+              quizCooldowns: {},
+              badges: [],
+            },
+            { merge: true },
+          );
+        }
+
+        const mergedState = deepMerge(
+          deepMerge(defaultState, remoteData.courseState || {}),
+          localDraft?.courseState || {},
+        );
+        const mergedProgress = normalizeProgress(defaultProgress, remoteData, localDraft);
+        const routeModuleIndex = getModuleIndexFromPath(initialPathRef.current);
+        const initialModuleIndex =
+          routeModuleIndex !== null && routeModuleIndex <= mergedProgress.currentModuleIndex
+            ? routeModuleIndex
+            : mergedProgress.currentModuleIndex;
+
+        if (!isMounted) {
+          return;
+        }
+
+        setCourseState(mergedState);
+        setProgress(mergedProgress);
+        setActiveModuleIndex(initialModuleIndex);
+        setActiveLessonIndex(
+          getFirstIncompleteLessonIndex(
+            teacherCourseData.modules[initialModuleIndex],
+            mergedProgress.completedLessons,
+          ),
+        );
+        setExpandedModules(createExpandedMap(mergedProgress.currentModuleIndex));
+        setInitialized(true);
+      } catch (error) {
+        console.error("Error loading teacher course:", error);
+        showFeedback(setFeedback, feedbackTimeoutRef, "error", "โหลดข้อมูลไม่สำเร็จ", "ระบบจะใช้แบบร่างบนอุปกรณ์ชั่วคราวก่อน");
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadCourseState();
+    return () => {
+      isMounted = false;
+    };
   }, [currentUser]);
 
   useEffect(() => {
-    if (currentLesson && currentLesson.type === 'quiz') {
-      let questions = [];
-      if (currentLesson.content?.isPretest) {
-        questions = getPreTestQuestions(); 
-      } else if (currentLesson.content?.isPosttest) {
-        questions = getPostTestQuestions(currentLesson.content.questionsCount || 10);
-      } else {
-        questions = currentLesson.content?.questions || [];
-      }
-      setQuizQuestions(questions);
-      setQuizAnswers({});
-      setQuizSubmitted(false);
-      setQuizScore(0);
+    if (!initialized || !currentUser) {
+      return undefined;
     }
-  }, [currentLesson]);
 
-  // --- 3. Logic ---
-  const handleLessonChange = (modIndex, lessIndex) => {
-    if (modIndex > progressData.currentModuleIndex) {
-      alert("🔒 กรุณาเรียนบทเรียนก่อนหน้าให้ครบถ้วนก่อนครับ");
+    writeLocalDraft(currentUser.uid, { courseState, progress });
+    const enrollmentRef = doc(db, "users", currentUser.uid, "enrollments", COURSE_ID);
+    setSyncState("saving");
+
+    const timeoutId = window.setTimeout(async () => {
+      try {
+        await setDoc(
+          enrollmentRef,
+          {
+            courseState,
+            completedLessons: progress.completedLessons,
+            currentModuleIndex: progress.currentModuleIndex,
+            quizAttempts: progress.quizAttempts,
+            quizScores: progress.quizScores,
+            quizCooldowns: progress.quizCooldowns,
+            badges: progress.badges,
+            status: "active",
+            lastAccess: new Date(),
+          },
+          { merge: true },
+        );
+        setSyncState("saved");
+      } catch (error) {
+        console.error("Error saving teacher course:", error);
+        setSyncState("error");
+      }
+    }, 700);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [courseState, currentUser, initialized, progress]);
+
+  useEffect(() => {
+    if (!currentLesson || currentLesson.type !== "quiz") {
       return;
     }
-    setActiveModuleIndex(modIndex);
-    setActiveLessonIndex(lessIndex);
-    if (window.innerWidth < 768) setSidebarOpen(false);
-  };
 
-  const toggleModule = (index) => {
-    setExpandedModules(prev => ({ ...prev, [index]: !prev[index] }));
-  };
+    setQuizQuestions(getQuizQuestionsById(currentLesson.content.quizId));
+    setQuizAnswers({});
+    setQuizSubmitted(false);
+    setQuizScore(progress.quizScores[currentLesson.content.quizId] || 0);
+  }, [currentLesson, progress.quizScores]);
 
-  const markLessonComplete = async () => {
-    if (!currentLesson || progressData.completedLessons.includes(currentLesson.id)) return;
-
-    try {
-      const enrollRef = doc(db, "users", currentUser.uid, "enrollments", courseId);
-      
-      await updateDoc(enrollRef, {
-        completedLessons: arrayUnion(currentLesson.id),
-        lastAccess: new Date()
-      });
-
-      const newCompleted = [...progressData.completedLessons, currentLesson.id];
-      const allLessonsInModule = currentModule.lessons.map(l => l.id);
-      const isModuleDone = allLessonsInModule.every(id => newCompleted.includes(id));
-
-      if (isModuleDone) {
-        const nextModuleIdx = activeModuleIndex + 1;
-        if (nextModuleIdx < currentCourse.modules.length) {
-           if (nextModuleIdx > progressData.currentModuleIndex) {
-             await updateDoc(enrollRef, { currentModuleIndex: nextModuleIdx });
-             setProgressData(prev => ({ ...prev, completedLessons: newCompleted, currentModuleIndex: nextModuleIdx }));
-             alert(`🎉 ยินดีด้วย! ปลดล็อก ${currentCourse.modules[nextModuleIdx].title} แล้ว`);
-           } else {
-             setProgressData(prev => ({ ...prev, completedLessons: newCompleted }));
-           }
-        } else {
-             setProgressData(prev => ({ ...prev, completedLessons: newCompleted }));
-        }
-      } else {
-        setProgressData(prev => ({ ...prev, completedLessons: newCompleted }));
-      }
-
-    } catch (error) {
-      console.error("Error marking complete:", error);
-    }
-  };
-
-  const handleQuizSelect = (questionId, optionIndex) => {
-    if (quizSubmitted) return;
-    setQuizAnswers(prev => ({ ...prev, [questionId]: optionIndex }));
-  };
-
-  const submitQuiz = async () => {
-    let score = 0;
-    quizQuestions.forEach((q) => {
-        if (quizAnswers[q.id] === q.correctAnswer) score += 1;
-    });
-    setQuizScore(score);
-    setQuizSubmitted(true);
-
-    const isPassed = score >= (currentLesson.content?.passScore || 0);
-    const enrollRef = doc(db, "users", currentUser.uid, "enrollments", courseId);
-
-    if (currentLesson.content?.isPretest) {
-        await markLessonComplete(); 
-        return;
+  useEffect(() => {
+    if (!initialized || !currentModule) {
+      return;
     }
 
-    if (currentLesson.id === 'm1-posttest') {
-      setModuleOneState(prev => ({ ...prev, posttestScore: score }));
+    const targetPath = `/course/teacher/${currentModule.id}`;
+    if (location.pathname !== targetPath) {
+      navigate(targetPath, { replace: true });
+    }
+  }, [currentModule, initialized, location.pathname, navigate]);
+
+  function updateModuleState(moduleKey, updater) {
+    setCourseState((previous) => ({
+      ...previous,
+      [moduleKey]: updater(previous[moduleKey]),
+    }));
+  }
+
+  function moveToNextStep(nextProgress) {
+    const nextLessonIndex = activeLessonIndex + 1;
+    if (nextLessonIndex < currentModule.lessons.length) {
+      setActiveLessonIndex(nextLessonIndex);
+      return;
     }
 
-    if (currentLesson.content?.isPosttest) {
-        const newAttempts = progressData.postTestAttempts + 1;
-        await updateDoc(enrollRef, {
-            postTestAttempts: newAttempts,
-            score: score, 
-            lastAccess: new Date()
-        });
-        setProgressData(prev => ({ ...prev, postTestAttempts: newAttempts, score: score }));
-
-        if (isPassed) {
-            await markLessonComplete();
-            alert("🎉 ยินดีด้วย! คุณสอบผ่าน Post-test แล้ว");
-        } else {
-            if (newAttempts >= 5) {
-                alert("❌ คุณสอบไม่ผ่านครบ 5 ครั้ง ระบบจะทำการรีเซ็ตการเรียนรู้ใหม่ตั้งแต่ต้น");
-                await resetCourseProgress();
-            }
-        }
-    } else {
-        if (isPassed) await markLessonComplete();
+    if (activeModuleIndex + 1 <= nextProgress.currentModuleIndex) {
+      setActiveModuleIndex(activeModuleIndex + 1);
+      setActiveLessonIndex(0);
+      setExpandedModules((previous) => ({
+        ...previous,
+        [activeModuleIndex + 1]: true,
+      }));
     }
-  };
+  }
 
-  const resetCourseProgress = async () => {
-    setLoading(true);
-    try {
-        const enrollRef = doc(db, "users", currentUser.uid, "enrollments", courseId);
-        await updateDoc(enrollRef, {
-            currentModuleIndex: 1, 
-            completedLessons: ["pretest-exam"], 
-            postTestAttempts: 0,
-            score: 0
-        });
-        window.location.reload();
-    } catch (error) {
-        console.error("Reset failed:", error);
-        setLoading(false);
-    }
-  };
+  function completeCurrentLesson(options = {}) {
+    const nextProgress = withCompletedLesson(
+      progress,
+      activeModuleIndex,
+      currentLesson.id,
+      options.badgeName,
+    );
+    setProgress(nextProgress);
+    moveToNextStep(nextProgress);
+  }
 
-  const retryQuiz = () => {
-    if (currentLesson.content?.isPosttest) {
-        setQuizQuestions(getPostTestQuestions(10));
+  function toggleModule(index) {
+    setExpandedModules((previous) => ({
+      ...previous,
+      [index]: !previous[index],
+    }));
+  }
+
+  function selectLesson(moduleIndex, lessonIndex) {
+    if (isLessonLocked(moduleIndex, lessonIndex, progress)) {
+      showFeedback(
+        setFeedback,
+        feedbackTimeoutRef,
+        "warning",
+        "ยังเข้าไม่ได้",
+        "กรุณาทำขั้นตอนก่อนหน้าให้เสร็จ หรือปลดล็อกโมดูลนี้ก่อนครับ",
+      );
+      return;
     }
+
+    setActiveModuleIndex(moduleIndex);
+    setActiveLessonIndex(lessonIndex);
+    setExpandedModules((previous) => ({
+      ...previous,
+      [moduleIndex]: true,
+    }));
+
+    if (window.innerWidth < 1024) {
+      setSidebarOpen(false);
+    }
+  }
+
+  function handleCompleteArticle() {
+    completeCurrentLesson();
+    showFeedback(
+      setFeedback,
+      feedbackTimeoutRef,
+      "success",
+      "อ่านบทนำเรียบร้อยแล้ว",
+      "พร้อมเข้าสู่ภารกิจถัดไปและระบบบันทึกความคืบหน้าไว้แล้วครับ",
+    );
+  }
+
+  function handleCompleteActivity() {
+    const errorMessage = getActivityValidationError(currentLesson?.activityType, courseState);
+    if (errorMessage) {
+      showFeedback(
+        setFeedback,
+        feedbackTimeoutRef,
+        "warning",
+        "ข้อมูลยังไม่ครบ",
+        errorMessage,
+      );
+      return;
+    }
+
+    completeCurrentLesson();
+    showFeedback(
+      setFeedback,
+      feedbackTimeoutRef,
+      "success",
+      "บันทึกภารกิจสำเร็จ",
+      "ดีมากครับ ระบบเก็บความคืบหน้าและปลดล็อกขั้นตอนถัดไปให้แล้ว",
+    );
+  }
+
+  function handleQuizSelect(questionId, optionIndex) {
+    if (quizSubmitted) {
+      return;
+    }
+
+    setQuizAnswers((previous) => ({
+      ...previous,
+      [questionId]: optionIndex,
+    }));
+  }
+
+  function handleRetryQuiz() {
+    if (!currentLesson?.content?.quizId) {
+      return;
+    }
+
+    setQuizQuestions(getQuizQuestionsById(currentLesson.content.quizId));
     setQuizAnswers({});
     setQuizSubmitted(false);
     setQuizScore(0);
-  };
+  }
 
-  // --- 4. Render Helpers ---
-  const renderVideo = () => (
-    <div className="animate-fade-in-up">
-      <div className="aspect-video w-full bg-black rounded-2xl overflow-hidden shadow-2xl mb-8 relative group">
-        {currentLesson.content?.videoUrl ? (
-          <iframe 
-            src={currentLesson.content.videoUrl} 
-            title="Video Player"
-            className="w-full h-full border-0"
-            allowFullScreen
-          />
-        ) : (
-          <div className="absolute inset-0 flex flex-col items-center justify-center text-white/50 bg-gray-900">
-            <PlayCircle size={64} className="mb-4 opacity-50" />
-            <p className="text-lg">Video Placeholder</p>
+  function handleSubmitQuiz() {
+    if (!currentLesson || currentLesson.type !== "quiz") {
+      return;
+    }
+
+    if (cooldownRemaining > 0) {
+      showFeedback(
+        setFeedback,
+        feedbackTimeoutRef,
+        "warning",
+        "อยู่ในช่วงพักรอ",
+        `แบบทดสอบนี้จะเริ่มได้อีกครั้งใน ${formatCountdown(cooldownRemaining)}`,
+      );
+      return;
+    }
+
+    if (Object.keys(quizAnswers).length !== quizQuestions.length) {
+      showFeedback(
+        setFeedback,
+        feedbackTimeoutRef,
+        "warning",
+        "ตอบคำถามให้ครบก่อน",
+        "กรุณาเลือกคำตอบทุกข้อก่อนส่งแบบทดสอบครับ",
+      );
+      return;
+    }
+
+    const score = quizQuestions.reduce(
+      (sum, question) => sum + Number(quizAnswers[question.id] === question.correctAnswer),
+      0,
+    );
+    const passed = score >= (currentLesson.content.passScore || 0);
+    const nextProgress = buildQuizProgress(progress, currentLesson.content, score, passed);
+
+    setQuizSubmitted(true);
+    setQuizScore(score);
+
+    if (passed || currentLesson.content.mode === "survey" || currentLesson.content.passScore === 0) {
+      const completedProgress = withCompletedLesson(
+        nextProgress,
+        activeModuleIndex,
+        currentLesson.id,
+      );
+      setProgress(completedProgress);
+      moveToNextStep(completedProgress);
+      showFeedback(
+        setFeedback,
+        feedbackTimeoutRef,
+        "success",
+        currentLesson.content.mode === "survey" ? "บันทึกคำตอบแล้ว" : "ผ่านแบบทดสอบแล้ว",
+        currentLesson.content.mode === "survey"
+          ? "ระบบบันทึกคำตอบสะท้อนผลของคุณเรียบร้อยแล้ว"
+          : `คุณได้ ${score} คะแนน และปลดล็อกขั้นตอนถัดไปแล้วครับ`,
+      );
+      return;
+    }
+
+    setProgress(nextProgress);
+
+    const cooldownAfterSubmit = getQuizCooldownRemaining(
+      nextProgress.quizCooldowns,
+      currentLesson.content.quizId,
+    );
+
+    showFeedback(
+      setFeedback,
+      feedbackTimeoutRef,
+      "warning",
+      cooldownAfterSubmit > 0 ? "ครบจำนวนครั้งที่กำหนด" : "ยังไม่ผ่านเกณฑ์",
+      cooldownAfterSubmit > 0
+        ? `ระบบจะเปิดให้เริ่มอีกครั้งใน ${formatCountdown(cooldownAfterSubmit)}`
+        : `คุณได้ ${score} คะแนนจาก ${quizQuestions.length} ข้อ ลองทบทวนอีกนิดแล้วทำใหม่ได้เลยครับ`,
+    );
+  }
+
+  function handleDownloadReport() {
+    if (!currentLesson?.content) {
+      return;
+    }
+
+    if (currentLesson.content.certificateType === "module-report") {
+      const reportId = makeUniqueId(currentLesson.content.uniquePrefix, currentUser?.uid);
+      const svgText = buildModuleReportSvg({
+        moduleKey: currentLesson.content.moduleKey,
+        reportId,
+        badgeName: currentLesson.content.badgeName,
+        userName: currentUserName,
+        courseState,
+      });
+
+      downloadSvgFile(`${currentLesson.content.moduleKey}-${reportId}.svg`, svgText);
+      completeCurrentLesson({ badgeName: currentLesson.content.badgeName });
+      showFeedback(
+        setFeedback,
+        feedbackTimeoutRef,
+        "success",
+        "ดาวน์โหลด Report Card แล้ว",
+        `คุณได้รับ ${currentLesson.content.badgeName} และ ${currentLesson.content.unlockLabel}`,
+      );
+      return;
+    }
+
+    const reportId = makeUniqueId(currentLesson.content.uniquePrefix, currentUser?.uid);
+    const svgText = buildFinalCertificateSvg({
+      userName: currentUserName,
+      reportId,
+      badges: progress.badges,
+    });
+
+    downloadSvgFile(`inspire-360-certificate-${reportId}.svg`, svgText);
+    completeCurrentLesson();
+    showFeedback(
+      setFeedback,
+      feedbackTimeoutRef,
+      "success",
+      "รับ Certificate เรียบร้อย",
+      "ยอดเยี่ยมมากครับ คุณจบเส้นทาง InSPIRE 360° for Teacher แล้ว",
+    );
+  }
+
+  function addSwotItem(bucketKey, rawValue) {
+    const value = rawValue.trim();
+    if (!value) {
+      return;
+    }
+
+    updateModuleState("module1", (module) => ({
+      ...module,
+      swot: {
+        ...module.swot,
+        [bucketKey]: module.swot[bucketKey].includes(value)
+          ? module.swot[bucketKey]
+          : [...module.swot[bucketKey], value],
+      },
+    }));
+
+    setSwotDrafts((previous) => ({
+      ...previous,
+      [bucketKey]: "",
+    }));
+  }
+
+  function removeSwotItem(bucketKey, item) {
+    updateModuleState("module1", (module) => ({
+      ...module,
+      swot: {
+        ...module.swot,
+        [bucketKey]: module.swot[bucketKey].filter((value) => value !== item),
+      },
+    }));
+  }
+
+  function addStrategy() {
+    if (!towsDraft.internalValue || !towsDraft.externalValue || !towsDraft.description.trim()) {
+      showFeedback(
+        setFeedback,
+        feedbackTimeoutRef,
+        "warning",
+        "เติมข้อมูลกลยุทธ์ก่อน",
+        "กรุณาเลือกปัจจัยภายในและภายนอก พร้อมเขียนแนวทางลงมือทำให้ครบครับ",
+      );
+      return;
+    }
+
+    const strategyType = getStrategyType(
+      towsDraft.internalBucket,
+      towsDraft.externalBucket,
+    );
+
+    updateModuleState("module1", (module) => ({
+      ...module,
+      strategies: [
+        ...module.strategies,
+        {
+          id: `strategy-${Date.now()}`,
+          type: strategyType,
+          title:
+            towsDraft.title.trim() ||
+            `${strategyType} | ${towsDraft.internalValue} x ${towsDraft.externalValue}`,
+          description: towsDraft.description.trim(),
+          internalBucket: towsDraft.internalBucket,
+          internalValue: towsDraft.internalValue,
+          externalBucket: towsDraft.externalBucket,
+          externalValue: towsDraft.externalValue,
+        },
+      ],
+    }));
+
+    setTowsDraft({
+      internalBucket: "strengths",
+      internalValue: "",
+      externalBucket: "opportunities",
+      externalValue: "",
+      title: "",
+      description: "",
+    });
+  }
+
+  function removeStrategy(strategyId) {
+    updateModuleState("module1", (module) => ({
+      ...module,
+      strategies: module.strategies.filter((strategy) => strategy.id !== strategyId),
+    }));
+  }
+
+  function generatePlcMatch() {
+    const options = PLC_TEACHER_POOL.filter((teacher) => teacher.name !== currentUserName);
+    const selectedTeacher =
+      options[Math.floor(Math.random() * options.length)] || PLC_TEACHER_POOL[0];
+    const scheduledDate = new Date();
+    scheduledDate.setDate(scheduledDate.getDate() + 2 + Math.floor(Math.random() * 4));
+    scheduledDate.setHours(19, 0, 0, 0);
+
+    updateModuleState("module3", (module) => ({
+      ...module,
+      pairedTeacherName: selectedTeacher.name,
+      pairedTeacherUid: selectedTeacher.uid,
+      meetingDate: scheduledDate.toISOString().slice(0, 10),
+      meetingTime: "19:00",
+      meetLink: module.meetLink || "https://meet.google.com/new",
+    }));
+  }
+
+  function renderLessonBody() {
+    if (!currentLesson) {
+      return null;
+    }
+
+    if (currentLesson.type === "article") {
+      return renderArticleLesson({
+        lesson: currentLesson,
+        onComplete: handleCompleteArticle,
+      });
+    }
+
+    if (currentLesson.type === "quiz") {
+      return renderQuizLesson({
+        lesson: currentLesson,
+        quizQuestions,
+        quizAnswers,
+        quizSubmitted,
+        quizScore,
+        cooldownRemaining,
+        onSelect: handleQuizSelect,
+        onSubmit: handleSubmitQuiz,
+        onRetry: handleRetryQuiz,
+        lastSavedScore: progress.quizScores[currentLesson.content.quizId],
+      });
+    }
+
+    if (currentLesson.type === "certificate") {
+      return renderCertificateLesson({
+        lesson: currentLesson,
+        progress,
+        currentUser,
+        currentUserName,
+        onDownload: handleDownloadReport,
+      });
+    }
+
+    return renderActivityLesson({
+      lesson: currentLesson,
+      courseState,
+      currentUser,
+      currentUserName,
+      currentModuleKey,
+      insightTokens,
+      swotChartValues,
+      swotDrafts,
+      towsDraft,
+      updateModuleState,
+      setSwotDrafts,
+      setTowsDraft,
+      addSwotItem,
+      removeSwotItem,
+      addStrategy,
+      removeStrategy,
+      generatePlcMatch,
+      onComplete: handleCompleteActivity,
+    });
+  }
+
+  if (loading || !currentModule || !currentLesson) {
+    return (
+      <div className="flex min-h-[70vh] items-center justify-center">
+        <div className="dark-panel flex max-w-md items-center gap-4 p-5">
+          <Loader2 size={24} className="animate-spin text-amber-200" />
+          <div>
+            <p className="font-semibold text-white">กำลังเตรียมห้องเรียนรู้</p>
+            <p className="mt-1 text-sm text-slate-300">
+              ระบบกำลังโหลดโมดูล กิจกรรม และความคืบหน้าล่าสุดของคุณ
+            </p>
           </div>
-        )}
+        </div>
       </div>
-      <div className="prose max-w-none">
-        <h3 className="text-2xl font-bold text-gray-800 mb-4">{currentLesson.title}</h3>
-        <p className="text-gray-600 leading-relaxed text-lg">{currentLesson.content?.description}</p>
-      </div>
-      <div className="mt-8 flex justify-end">
-         {!progressData.completedLessons.includes(currentLesson.id) ? (
-            <button onClick={markLessonComplete} className="px-6 py-3 bg-primary text-white rounded-xl font-bold shadow-lg hover:bg-blue-700 transition flex items-center gap-2">
-                <CheckCircle size={20} /> ทำเครื่องหมายว่าเรียนจบ
-            </button>
-         ) : (
-            <div className="flex items-center gap-2 text-green-600 font-bold bg-green-50 px-4 py-2 rounded-lg">
-                <CheckCircle size={20} /> เรียนจบแล้ว
+    );
+  }
+
+  return (
+    <div data-teacher-course-root="true" className="relative overflow-hidden rounded-[32px] border border-white/10 bg-[#07111d] text-slate-100">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(79,70,229,0.22),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(245,158,11,0.16),transparent_26%)]" />
+
+      <AnimatePresence>
+        {feedback && (
+          <motion.div
+            initial={{ opacity: 0, y: -16 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -12 }}
+            className="fixed right-4 top-4 z-[90] max-w-sm"
+          >
+            <div className="rounded-[24px] border border-white/10 bg-slate-950/90 px-4 py-4 text-white shadow-2xl backdrop-blur">
+              <p className="font-semibold">{feedback.title}</p>
+              <p className="mt-1 text-sm leading-6 text-slate-200">{feedback.message}</p>
             </div>
-         )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <div className="relative flex min-h-[calc(100vh-8rem)]">
+        {sidebarOpen && (
+          <button
+            type="button"
+            className="fixed inset-0 z-30 bg-slate-950/70 backdrop-blur-sm lg:hidden"
+            onClick={() => setSidebarOpen(false)}
+            aria-label="ปิดเมนูโมดูล"
+          />
+        )}
+
+        <aside
+          className={`fixed inset-y-0 left-0 z-40 flex w-[21rem] flex-col border-r border-white/10 bg-slate-950/92 px-4 py-4 backdrop-blur-xl transition-transform duration-300 lg:sticky lg:top-0 lg:h-[calc(100vh-8rem)] lg:translate-x-0 ${
+            sidebarOpen ? "translate-x-0" : "-translate-x-full"
+          }`}
+        >
+          <div className="flex items-center justify-between gap-3 px-2">
+            <div>
+              <p className="text-[11px] uppercase tracking-[0.3em] text-amber-200">InSPIRE 360°</p>
+              <h2 className="mt-2 font-display text-2xl font-semibold tracking-[-0.06em] text-white">
+                ห้องเรียนรู้ของครู
+              </h2>
+            </div>
+            <button
+              type="button"
+              className="rounded-full p-2 text-slate-300 transition hover:bg-white/10 hover:text-white lg:hidden"
+              onClick={() => setSidebarOpen(false)}
+            >
+              <X size={18} />
+            </button>
+          </div>
+
+          <div className="mt-5 rounded-[28px] border border-white/10 bg-white/5 p-4">
+            <p className="text-xs uppercase tracking-[0.24em] text-slate-400">Progress</p>
+            <div className="mt-3 h-3 overflow-hidden rounded-full bg-white/10">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-amber-300 via-amber-200 to-white"
+                style={{ width: `${overallProgress}%` }}
+              />
+            </div>
+            <div className="mt-4 flex items-center justify-between text-sm text-slate-300">
+              <span>{progress.completedLessons.length}/{totalLessons} ขั้นตอน</span>
+              <span>{overallProgress}%</span>
+            </div>
+            <div className="mt-4 rounded-[22px] border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200">
+              Badge ที่ได้รับ {progress.badges.length} รายการ
+            </div>
+          </div>
+
+          <div className="mt-5 flex-1 overflow-y-auto custom-scrollbar pr-1">
+            <div className="space-y-3">
+              {teacherCourseData.modules.map((module, moduleIndex) => {
+                const moduleLocked = moduleIndex > progress.currentModuleIndex;
+                const moduleCompleted = module.lessons.every((lesson) =>
+                  progress.completedLessons.includes(lesson.id),
+                );
+
+                return (
+                  <div key={module.id} className={`overflow-hidden rounded-[26px] border ${
+                    moduleIndex === activeModuleIndex ? "border-white/15 bg-white/10" : "border-white/10 bg-white/5"
+                  }`}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (moduleLocked) {
+                          showFeedback(setFeedback, feedbackTimeoutRef, "warning", "โมดูลยังไม่ปลดล็อก", "ทำขั้นตอนของโมดูลก่อนหน้าให้ครบก่อนครับ");
+                          return;
+                        }
+                        toggleModule(moduleIndex);
+                      }}
+                      className="flex w-full items-center justify-between gap-3 px-4 py-4 text-left"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-xs uppercase tracking-[0.24em] text-slate-400">{module.navigationLabel}</p>
+                        <h3 className="mt-1 text-sm font-semibold leading-6 text-white">{module.title}</h3>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {moduleLocked ? <Lock size={16} className="text-slate-500" /> : moduleCompleted ? <CheckCircle2 size={16} className="text-emerald-300" /> : <Circle size={16} className="text-slate-500" />}
+                        {expandedModules[moduleIndex] ? <ChevronDown size={16} className="text-slate-400" /> : <ChevronRight size={16} className="text-slate-400" />}
+                      </div>
+                    </button>
+
+                    {expandedModules[moduleIndex] && (
+                      <div className="border-t border-white/10 px-3 pb-3 pt-2">
+                        {module.lessons.map((lesson, lessonIndex) => {
+                          const lessonLocked = isLessonLocked(moduleIndex, lessonIndex, progress);
+                          const lessonCompleted = progress.completedLessons.includes(lesson.id);
+
+                          return (
+                            <button
+                              key={lesson.id}
+                              type="button"
+                              onClick={() => selectLesson(moduleIndex, lessonIndex)}
+                              className={`mt-2 flex w-full items-center gap-3 rounded-[18px] px-3 py-3 text-left transition ${
+                                moduleIndex === activeModuleIndex && lessonIndex === activeLessonIndex
+                                  ? "bg-white text-slate-950"
+                                  : lessonLocked
+                                    ? "text-slate-500"
+                                    : "bg-white/0 text-slate-200 hover:bg-white/5"
+                              }`}
+                            >
+                              <div className={`flex h-10 w-10 items-center justify-center rounded-2xl ${
+                                moduleIndex === activeModuleIndex && lessonIndex === activeLessonIndex
+                                  ? "bg-slate-950 text-white"
+                                  : "bg-white/10 text-slate-100"
+                              }`}>
+                                {getIcon(lesson.iconName, "h-5 w-5")}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-sm font-medium">{lesson.title}</p>
+                              </div>
+                              {lessonLocked ? <Lock size={14} /> : lessonCompleted ? <CheckCircle2 size={16} className={moduleIndex === activeModuleIndex && lessonIndex === activeLessonIndex ? "text-emerald-600" : "text-emerald-300"} /> : <Circle size={14} className="text-slate-500" />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="mt-5 rounded-[26px] border border-white/10 bg-white/5 p-4">
+            <p className="text-xs uppercase tracking-[0.24em] text-slate-400">Badges Shelf</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {progress.badges.length > 0 ? progress.badges.map((badge) => (
+                <span key={badge} className="rounded-full border border-amber-300/20 bg-amber-300/10 px-3 py-2 text-xs font-semibold text-amber-100">
+                  {badge}
+                </span>
+              )) : <p className="text-sm text-slate-400">เมื่อดาวน์โหลด report card แล้ว badge จะปรากฏที่นี่</p>}
+            </div>
+          </div>
+        </aside>
+
+        <div className="relative flex-1 px-4 py-4 sm:px-6 lg:px-8 lg:py-6">
+          <div className="mx-auto max-w-7xl space-y-6">
+            <section className="dark-panel overflow-hidden p-6 sm:p-8">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setSidebarOpen(true)}
+                      className="rounded-full border border-white/10 bg-white/5 p-2 text-slate-200 transition hover:bg-white/10 lg:hidden"
+                    >
+                      <Menu size={18} />
+                    </button>
+                    <div className="glass-chip border-white/10 bg-white/5 text-slate-200">{teacherCourseData.title}</div>
+                  </div>
+                  <h1 className="mt-5 font-display text-4xl font-semibold tracking-[-0.08em] text-white sm:text-5xl">{currentLesson.title}</h1>
+                  <p className="mt-4 max-w-3xl text-base leading-8 text-slate-300">{currentModule.description}</p>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <DarkStatCard label="โมดูลปัจจุบัน" value={currentModule.navigationLabel} />
+                  <DarkStatCard label="ความคืบหน้าโมดูล" value={`${moduleCompletionCount}/${currentModule.lessons.length}`} />
+                  <DarkStatCard label="บันทึกล่าสุด" value={getSyncLabel(syncState)} icon={<Clock3 size={16} className="text-amber-200" />} />
+                  <DarkStatCard label="Badge ที่ได้" value={`${progress.badges.length} รายการ`} icon={<Trophy size={16} className="text-amber-200" />} />
+                </div>
+              </div>
+
+              <div className="mt-8 rounded-[28px] border border-white/10 bg-white/5 p-5">
+                <div className="flex items-start gap-4">
+                  <div className="rounded-full bg-amber-300/15 p-3 text-amber-200">
+                    <Sparkles size={20} />
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.24em] text-amber-200">AI Mentor</p>
+                    <p className="mt-2 text-sm leading-7 text-slate-100">{buildMentorMessage(currentLesson, progress)}</p>
+                    {currentLesson.content?.mentorTip && (
+                      <p className="mt-2 text-sm leading-7 text-slate-300">Tip: {currentLesson.content.mentorTip}</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-8 overflow-x-auto">
+                <div className="flex min-w-max gap-3">
+                  {currentModule.lessons.map((lesson, lessonIndex) => {
+                    const isActive = lessonIndex === activeLessonIndex;
+                    const isComplete = progress.completedLessons.includes(lesson.id);
+
+                    return (
+                      <button
+                        key={lesson.id}
+                        type="button"
+                        onClick={() => selectLesson(activeModuleIndex, lessonIndex)}
+                        className={`rounded-[22px] border px-4 py-3 text-left transition ${
+                          isActive
+                            ? "border-amber-300/30 bg-amber-300/15 text-white"
+                            : isComplete
+                              ? "border-emerald-300/20 bg-emerald-400/10 text-emerald-100"
+                              : "border-white/10 bg-white/5 text-slate-300 hover:bg-white/10"
+                        }`}
+                      >
+                        <div className="text-[11px] uppercase tracking-[0.24em]">Step {lessonIndex + 1}</div>
+                        <div className="mt-2 text-sm font-semibold">{lesson.title}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </section>
+
+            <AnimatePresence mode="wait">
+              <motion.section
+                key={currentLesson.id}
+                initial="hidden"
+                animate="show"
+                exit="hidden"
+                variants={pageReveal}
+                className="surface-panel p-6 sm:p-8"
+              >
+                <div className="border-b border-slate-200 pb-6">
+                  <div className="text-[11px] uppercase tracking-[0.28em] text-slate-400">
+                    {currentModule.navigationLabel} / Step {activeLessonIndex + 1}
+                  </div>
+                  <h2 className="mt-3 font-display text-4xl font-semibold tracking-[-0.07em] text-slate-950">{currentLesson.title}</h2>
+                  <p className="mt-4 max-w-3xl text-sm leading-7 text-slate-500">
+                    {currentLesson.content?.objective || currentLesson.content?.description || currentModule.description}
+                  </p>
+                </div>
+
+                <div className="pt-8">{renderLessonBody()}</div>
+              </motion.section>
+            </AnimatePresence>
+          </div>
+        </div>
       </div>
     </div>
   );
+}
 
-  const addMissionTextToSWOT = (bucket) => {
-    if (!missionDraft.trim()) return;
-    setModuleOneState(prev => ({
-      ...prev,
-      swot: { ...prev.swot, [bucket]: [...prev.swot[bucket], missionDraft.trim()] }
-    }));
-    setMissionDraft('');
-  };
+function showFeedback(setFeedback, timeoutRef, tone, title, message) {
+  if (timeoutRef.current) {
+    window.clearTimeout(timeoutRef.current);
+  }
+  setFeedback({ tone, title, message });
+  timeoutRef.current = window.setTimeout(() => setFeedback(null), 3200);
+}
 
-  const addStrategy = () => {
-    if (!missionDraft.trim()) return;
-    setModuleOneState(prev => ({ ...prev, strategies: [...prev.strategies, missionDraft.trim()] }));
-    setMissionDraft('');
-  };
+function readLocalDraft(userId) {
+  try {
+    const rawValue = window.localStorage.getItem(`teacher-course-draft:${userId}`);
+    return rawValue ? JSON.parse(rawValue) : null;
+  } catch (error) {
+    console.error("Error reading teacher draft:", error);
+    return null;
+  }
+}
 
-  const completeMission = async () => {
-    if (currentLesson.activityType === 'insight_9_dimensions') {
-      const isCompleted9 = INSIGHT_DIMENSIONS.every((dimension) => {
-        const answer = moduleOneState.dimensions[dimension.key];
-        const rating = moduleOneState.ratings[dimension.key];
-        return answer && String(answer).trim().length > 0 && rating >= 1 && rating <= 5;
-      });
-      if (!isCompleted9) {
-        alert('กรุณากรอกคำตอบและให้คะแนน Pain Point ให้ครบทั้ง 9 มิติก่อนส่งภารกิจ');
-        return;
-      }
-    }
-    if (currentLesson.activityType === 'insight_tows' && moduleOneState.strategies.length < 3) {
-      alert('กรุณาสร้างกลยุทธ์อย่างน้อย 3 กลยุทธ์ก่อนส่งภารกิจ');
-      return;
-    }
-    if (currentLesson.activityType === 'insight_needs_detective' && !moduleOneState.selectedStrategy) {
-      alert('กรุณาเลือก 1 กลยุทธ์หลักก่อนส่งภารกิจ');
-      return;
-    }
-    if (currentLesson.activityType === 'insight_action_plan') {
-      const { plan, do: doStep, check, act } = moduleOneState.actionPlan;
-      if (!plan || !doStep || !check || !act) {
-        alert('กรุณากรอก Action Plan (PDCA) ให้ครบทุกช่อง');
-        return;
-      }
-    }
-    await markLessonComplete();
-  };
+function writeLocalDraft(userId, payload) {
+  try {
+    window.localStorage.setItem(`teacher-course-draft:${userId}`, JSON.stringify(payload));
+  } catch (error) {
+    console.error("Error writing teacher draft:", error);
+  }
+}
 
-  const renderActivity = () => {
-    const completed = progressData.completedLessons.includes(currentLesson.id);
-    const isInsightMission = currentLesson.activityType?.startsWith('insight_');
+function getSyncLabel(syncState) {
+  if (syncState === "saving") {
+    return "กำลังบันทึกอัตโนมัติ";
+  }
+  if (syncState === "saved") {
+    return "บันทึกล่าสุดแล้ว";
+  }
+  if (syncState === "error") {
+    return "สำรองบนอุปกรณ์";
+  }
+  return "พร้อมใช้งาน";
+}
 
-    return (
-      <div className="animate-fade-in-up space-y-6">
-        {currentLesson.activityType === 'swot_board' && <SWOTBoard />}
+function buildMentorMessage(currentLesson, progress) {
+  if (currentLesson.type === "article") {
+    return "เริ่มจากภาพใหญ่ก่อนนะครับ เมื่อคุณเห็นปลายทางชัด การตัดสินใจในภารกิจถัดไปจะมั่นใจขึ้นมาก";
+  }
 
-        {isInsightMission && (
-          <div className="bg-gradient-to-br from-indigo-50 via-purple-50 to-amber-50 border border-indigo-100 rounded-2xl p-6">
-            <div className="flex items-start gap-3 mb-4">
-              <Sparkles className="text-indigo-600 mt-1" size={20} />
-              <div>
-                <p className="text-xs tracking-widest font-bold text-indigo-500">AI MENTOR</p>
-                <p className="text-sm text-gray-700">{currentLesson.content?.mentorTip || 'ลองมองมุมนี้ดูไหมครับ? เริ่มจากข้อมูลจริงในบริบทของคุณก่อนเสมอ'}</p>
-              </div>
-            </div>
-            <div className="w-full bg-white/70 rounded-full h-2 overflow-hidden">
-              <div className="h-full bg-gradient-to-r from-indigo-500 to-purple-500" style={{ width: `${Math.min(100, ((activeLessonIndex + 1) / currentModule.lessons.length) * 100)}%` }} />
-            </div>
-          </div>
-        )}
+  if (currentLesson.type === "quiz") {
+    return currentLesson.id === "final-posttest"
+      ? "หายใจลึก ๆ แล้วค่อยตอบทีละข้อครับ Final Post-test คือการสรุปเส้นทางทั้งหมด ไม่ใช่การจับผิด"
+      : "มองคำถามให้เชื่อมกับสิ่งที่คุณทำจริงในโมดูลนี้ จะช่วยให้คำตอบชัดขึ้นครับ";
+  }
 
-        {currentLesson.activityType === 'insight_9_dimensions' && (
-          <div className="grid md:grid-cols-2 gap-4">
-            {(currentLesson.content?.dimensions || []).map((dimension) => (
-              <div key={dimension.key} className="bg-white rounded-xl border border-gray-100 p-4">
-                <p className="font-bold text-gray-800 mb-2">{dimension.label}</p>
-                <p className="text-sm text-gray-500 mb-3">{dimension.question}</p>
-                <textarea
-                  value={moduleOneState.dimensions[dimension.key] || ''}
-                  onChange={(e) => setModuleOneState(prev => ({ ...prev, dimensions: { ...prev.dimensions, [dimension.key]: e.target.value } }))}
-                  className="w-full border rounded-lg p-2 text-sm mb-2"
-                  rows={3}
-                  placeholder="บันทึกคำตอบของคุณ"
-                />
-                <input
-                  type="number"
-                  min={1}
-                  max={5}
-                  value={moduleOneState.ratings[dimension.key] || ''}
-                  onChange={(e) => setModuleOneState(prev => ({ ...prev, ratings: { ...prev.ratings, [dimension.key]: Number(e.target.value) } }))}
-                  className="w-full border rounded-lg p-2 text-sm"
-                  placeholder="Pain Point Rating 1-5"
-                />
-              </div>
-            ))}
-          </div>
-        )}
+  if (currentLesson.type === "certificate") {
+    return "นี่คือช่วงเก็บหลักฐานความสำเร็จของคุณครับ ดาวน์โหลดไฟล์เก็บไว้ใช้ต่อได้ทันที";
+  }
 
-        {currentLesson.activityType === 'insight_swot' && (
-          <div className="space-y-4">
-            <div className="bg-white border rounded-xl p-4">
-              <p className="font-semibold mb-3">Interactive SWOT Visualizer</p>
-              <div className="flex gap-2">
-                <input value={missionDraft} onChange={(e) => setMissionDraft(e.target.value)} className="flex-1 border rounded-lg p-2 text-sm" placeholder="พิมพ์ประเด็นจาก Mission 1 หรือพิมพ์เพิ่ม" />
-                <button onClick={() => addMissionTextToSWOT('strengths')} className="px-3 py-2 bg-green-100 rounded-lg text-xs font-bold">+S</button>
-                <button onClick={() => addMissionTextToSWOT('weaknesses')} className="px-3 py-2 bg-red-100 rounded-lg text-xs font-bold">+W</button>
-                <button onClick={() => addMissionTextToSWOT('opportunities')} className="px-3 py-2 bg-blue-100 rounded-lg text-xs font-bold">+O</button>
-                <button onClick={() => addMissionTextToSWOT('threats')} className="px-3 py-2 bg-amber-100 rounded-lg text-xs font-bold">+T</button>
-              </div>
-            </div>
-            <div className="grid md:grid-cols-2 gap-4">
-              {['strengths', 'weaknesses', 'opportunities', 'threats'].map((k) => (
-                <div key={k} className="bg-white border rounded-xl p-4">
-                  <p className="font-bold uppercase text-sm mb-2">{k}</p>
-                  <ul className="list-disc pl-5 text-sm text-gray-700 space-y-1">
-                    {(moduleOneState.swot[k] || []).map((item, idx) => <li key={`${item}-${idx}`}>{item}</li>)}
-                  </ul>
+  if (currentLesson.activityType === "swot_visualizer") {
+    return "ลองมองให้ครบทั้ง 4 มุมครับ ถ้าเห็นแต่อุปสรรคอย่างเดียว กลยุทธ์ที่ออกมาจะหนักเกินไป";
+  }
+
+  if (currentLesson.activityType === "tows_matrix") {
+    return "กลยุทธ์ที่ดีไม่ต้องซับซ้อนครับ แค่เชื่อมจุดแข็งหรือจุดอ่อนกับบริบทภายนอกให้เกิดการลงมือทำได้จริง";
+  }
+
+  return progress.badges.length > 0
+    ? "ดีมากครับ คุณเริ่มสะสม badge แล้ว ลองรักษาจังหวะนี้ต่อไปทีละภารกิจ"
+    : "ค่อย ๆ ไปทีละขั้นครับ ระบบจะเก็บความคืบหน้าไว้ให้ และคุณสามารถกลับมาแก้ไขได้เสมอ";
+}
+
+function getActivityValidationError(activityType, courseState) {
+  switch (activityType) {
+    case "insight_dimensions":
+      return Object.values(courseState.module1.dimensions).every(
+        (entry) => entry.answer.trim() && entry.rating > 0,
+      )
+        ? ""
+        : "กรุณาตอบให้ครบทั้ง 9 มิติและให้ระดับ pain point อย่างน้อย 1-5 ทุกข้อ";
+    case "swot_visualizer":
+      return Object.values(courseState.module1.swot).every((items) => items.length > 0)
+        ? ""
+        : "กรุณาใส่ข้อมูลอย่างน้อย 1 รายการใน Strengths, Weaknesses, Opportunities และ Threats";
+    case "tows_matrix":
+      return courseState.module1.strategies.length >= 3
+        ? ""
+        : "กรุณาสร้างกลยุทธ์อย่างน้อย 3 แนวทางก่อนบันทึกภารกิจนี้";
+    case "needs_detective":
+      return courseState.module1.selectedStrategyId &&
+        courseState.module1.insightCard.coreProblem.trim() &&
+        courseState.module1.insightCard.realNeed.trim() &&
+        courseState.module1.insightCard.solution.trim()
+        ? ""
+        : "กรุณาเลือกกลยุทธ์ 1 แนวทาง และกรอก Core Problem / Real Need / Solution ให้ครบ";
+    case "pdca_action_plan":
+      return Object.values(courseState.module1.actionPlan).every((value) => value.trim())
+        ? ""
+        : "กรุณากรอก PDCA ให้ครบทั้ง Plan, Do, Check และ Act";
+    case "dream_lab":
+      return courseState.module2.dreamLab.trim() ? "" : "กรุณาเขียนภาพฝันของคุณก่อนบันทึก";
+    case "vibe_check":
+      return courseState.module2.vibeCheck.trim() ? "" : "กรุณาอธิบายบรรยากาศที่อยากเห็นในห้องเรียน";
+    case "roadmap_builder":
+      return courseState.module2.roadmap.every(
+        (week) => week.focus.trim() && week.actions.trim() && week.evidence.trim(),
+      )
+        ? ""
+        : "กรุณากรอก roadmap ทั้ง 4 สัปดาห์ให้ครบ";
+    case "fivewoneh":
+      return Object.values(courseState.module2.fiveWOneH).every((value) => value.trim())
+        ? ""
+        : "กรุณาตอบ 5W1H ให้ครบทุกข้อ";
+    case "smart_goal":
+      return Object.values(courseState.module2.smartGoal).every((value) => value.trim())
+        ? ""
+        : "กรุณาเขียน SMART objective ให้ครบทั้ง 5 ด้าน";
+    case "quality_check":
+      return Object.values(courseState.module2.qualityCheck).every((value) => value.trim())
+        ? ""
+        : "กรุณาเชื่อมเป้าหมายกับ OECD, พระบรมราโชบาย ร.10 และ SEZ ให้ครบ";
+    case "plc_matchmaking":
+      return courseState.module3.meetingTopic.trim() &&
+        courseState.module3.pairedTeacherName.trim() &&
+        courseState.module3.meetingDate &&
+        courseState.module3.meetingTime &&
+        courseState.module3.meetLink.trim()
+        ? ""
+        : "กรุณาระบุหัวข้อ PLC คู่ครู วันเวลา และลิงก์ประชุมให้ครบ";
+    case "plc_report":
+      return courseState.module3.plcReport.trim() &&
+        courseState.module3.plcScreenshotUrl.trim()
+        ? ""
+        : "กรุณากรอกสรุป PLC และแนบลิงก์หลักฐานการประชุม";
+    case "pitching_session":
+      return courseState.module3.pitchScript.trim() &&
+        courseState.module3.pitchAudioUrl.trim()
+        ? ""
+        : "กรุณาใส่ทั้งสคริปต์และลิงก์ไฟล์เสียง";
+    case "innovation_lab":
+      return courseState.module4.innovationName.trim() &&
+        courseState.module4.hardware.trim() &&
+        courseState.module4.software.trim() &&
+        courseState.module4.activeLearning.trim()
+        ? ""
+        : "กรุณากรอกชื่อนวัตกรรม เครื่องมือ และรูปแบบ Active Learning ให้ครบ";
+    case "lesson_plan":
+      return courseState.module4.lessonPlan.trim() &&
+        courseState.module4.assessmentPlan.trim()
+        ? ""
+        : "กรุณากรอกแผนการสอนและแผนการประเมินให้ครบ";
+    case "crafting_session":
+      return courseState.module4.mediaEvidenceUrl.trim() &&
+        courseState.module4.mediaDescription.trim()
+        ? ""
+        : "กรุณาแนบลิงก์หลักฐานสื่อและอธิบายการใช้งาน";
+    case "classroom_trial":
+      return courseState.module5.teachingClipUrl.trim() &&
+        courseState.module5.classroomContext.trim()
+        ? ""
+        : "กรุณาใส่ลิงก์คลิปการสอนและบริบทของคาบเรียน";
+    case "reflection_log":
+      return courseState.module5.reflectionLog.trim() &&
+        courseState.module5.learnerResponse.trim()
+        ? ""
+        : "กรุณาเขียน reflection และเสียงตอบรับของผู้เรียน";
+    case "growth_plan":
+      return courseState.module5.nextGrowthPlan.trim()
+        ? ""
+        : "กรุณาออกแบบแนวทางต่อยอดในรอบถัดไปก่อนบันทึก";
+    case "platform_survey":
+      return courseState.survey.satisfaction > 0 &&
+        courseState.survey.easeOfUse > 0 &&
+        courseState.survey.aiHelpfulness > 0
+        ? ""
+        : "กรุณาให้คะแนนทั้ง 3 หัวข้อก่อนส่งแบบประเมิน";
+    default:
+      return "";
+  }
+}
+
+function DarkStatCard({ label, value, icon = null }) {
+  return (
+    <div className="rounded-[24px] border border-white/10 bg-white/5 px-4 py-4">
+      <div className="flex items-center gap-2 text-xs uppercase tracking-[0.22em] text-slate-400">
+        {icon}
+        <span>{label}</span>
+      </div>
+      <div className="mt-3 text-lg font-semibold text-white">{value}</div>
+    </div>
+  );
+}
+
+function StarRating({ value, onChange }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      {[1, 2, 3, 4, 5].map((item) => (
+        <button
+          key={item}
+          type="button"
+          onClick={() => onChange(item)}
+          className={`rounded-full border px-3 py-2 text-sm font-semibold transition ${
+            item <= value
+              ? "border-amber-300 bg-amber-50 text-amber-900"
+              : "border-slate-200 bg-white text-slate-500 hover:border-slate-300"
+          }`}
+        >
+          {item}
+        </button>
+      ))}
+      <span className="text-sm text-slate-500">{STAR_COPY[value - 1] || "ยังไม่ให้คะแนน"}</span>
+    </div>
+  );
+}
+
+function RatingCard({ title, description, value, onChange }) {
+  return (
+    <section className="rounded-[30px] border border-slate-200 bg-white p-6">
+      <h3 className="font-display text-2xl font-semibold text-slate-950">{title}</h3>
+      <p className="mt-3 text-sm leading-7 text-slate-500">{description}</p>
+      <div className="mt-5">
+        <StarRating value={value} onChange={onChange} />
+      </div>
+    </section>
+  );
+}
+
+function renderArticleLesson({ lesson, onComplete }) {
+  return (
+    <div className="space-y-8">
+      <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
+        <div className="rounded-[28px] border border-indigo-100 bg-indigo-50/70 p-6">
+          <div className="section-tag border-indigo-200 bg-white text-indigo-700">ภาพรวม</div>
+          <p className="mt-5 text-base leading-8 text-slate-700">{lesson.content.summary}</p>
+          <div className="mt-8">
+            <h3 className="font-display text-2xl font-semibold text-slate-950">ผลลัพธ์ที่คาดหวัง</h3>
+            <div className="mt-4 grid gap-3">
+              {lesson.content.outcomes.map((item) => (
+                <div key={item} className="rounded-2xl border border-white bg-white/90 px-4 py-4 text-sm leading-6 text-slate-700">
+                  {item}
                 </div>
               ))}
             </div>
           </div>
-        )}
+        </div>
 
-        {currentLesson.activityType === 'insight_tows' && (
-          <div className="bg-white border rounded-xl p-4 space-y-3">
-            <p className="font-semibold">Strategy Fusion (TOWS Matrix): ต้องมีอย่างน้อย 3 กลยุทธ์</p>
-            <div className="flex gap-2">
-              <input value={missionDraft} onChange={(e) => setMissionDraft(e.target.value)} className="flex-1 border rounded-lg p-2 text-sm" placeholder="ตัวอย่าง: SO - ใช้จุดแข็งการเล่าเรื่องของครู + ห้องสมุดชุมชน = นิทานสัญจร" />
-              <button onClick={addStrategy} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold">เพิ่มกลยุทธ์</button>
+        <div className="space-y-4">
+          <div className="rounded-[28px] border border-slate-200 bg-white p-6">
+            <h3 className="font-display text-2xl font-semibold text-slate-950">สิ่งที่ต้องส่งในโมดูลนี้</h3>
+            <div className="mt-4 space-y-3">
+              {lesson.content.deliverables.map((item) => (
+                <div key={item} className="rounded-[22px] border border-slate-200 bg-slate-50 px-4 py-4 text-sm leading-6 text-slate-600">
+                  {item}
+                </div>
+              ))}
             </div>
-            <ol className="list-decimal pl-6 text-sm text-gray-700 space-y-1">
-              {moduleOneState.strategies.map((s, i) => <li key={`${s}-${i}`}>{s}</li>)}
-            </ol>
           </div>
-        )}
 
-        {currentLesson.activityType === 'insight_needs_detective' && (
-          <div className="bg-white border rounded-xl p-4 space-y-4">
-            <p className="font-semibold">Needs Detective: ให้คะแนนกลยุทธ์และเลือก 1 กลยุทธ์หลัก</p>
-            {moduleOneState.strategies.length === 0 ? (
-              <p className="text-sm text-gray-500">ยังไม่มีกลยุทธ์จาก Mission 3</p>
-            ) : moduleOneState.strategies.map((strategy, index) => (
-              <div key={`${strategy}-${index}`} className="border rounded-lg p-3">
-                <label className="flex items-center gap-2 text-sm font-medium">
-                  <input type="radio" checked={moduleOneState.selectedStrategy === strategy} onChange={() => setModuleOneState(prev => ({ ...prev, selectedStrategy: strategy }))} />
-                  {strategy}
-                </label>
-                <input type="number" min={1} max={5} className="mt-2 border rounded p-2 text-sm w-28" placeholder="คะแนน 1-5" value={moduleOneState.strategyScores[strategy] || ''} onChange={(e) => setModuleOneState(prev => ({ ...prev, strategyScores: { ...prev.strategyScores, [strategy]: Number(e.target.value) } }))} />
-              </div>
-            ))}
-          </div>
-        )}
-
-        {currentLesson.activityType === 'insight_action_plan' && (
-          <div className="bg-white border rounded-xl p-4 grid md:grid-cols-2 gap-4">
-            {['plan', 'do', 'check', 'act'].map((step) => (
-              <div key={step}>
-                <p className="font-semibold uppercase text-sm mb-2">{step}</p>
-                <textarea rows={4} className="w-full border rounded-lg p-2 text-sm" value={moduleOneState.actionPlan[step] || ''} onChange={(e) => setModuleOneState(prev => ({ ...prev, actionPlan: { ...prev.actionPlan, [step]: e.target.value } }))} placeholder={`ระบุรายละเอียด ${step}`} />
-              </div>
-            ))}
-          </div>
-        )}
-
-        <div className="mt-8 flex justify-end">
-          {!completed ? (
-            <button onClick={isInsightMission ? completeMission : markLessonComplete} className="px-6 py-3 bg-primary text-white rounded-xl font-bold shadow-lg hover:bg-blue-700 transition flex items-center gap-2">
-              <PenTool size={20} /> ส่งภารกิจเรียบร้อย
-            </button>
-          ) : (
-            <div className="flex items-center gap-2 text-green-600 font-bold bg-green-50 px-4 py-2 rounded-lg">
-              <CheckCircle size={20} /> ส่งงานแล้ว
+          <div className="rounded-[28px] border border-amber-200 bg-amber-50 p-6">
+            <h3 className="font-display text-2xl font-semibold text-slate-950">รูปแบบสื่อประกอบ</h3>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {lesson.content.resourceTypes.map((type) => (
+                <span key={type} className="rounded-full border border-amber-200 bg-white px-3 py-2 text-xs font-semibold tracking-[0.2em] text-amber-700">
+                  {type}
+                </span>
+              ))}
             </div>
-          )}
+          </div>
         </div>
       </div>
-    );
-  };
 
-  // ✅ เพิ่มฟังก์ชันสำหรับแสดงบทความ / แบบสอบถาม (แยกจาก Video)
-  const renderArticle = () => (
-    <div className="animate-fade-in-up">
-      <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100">
-        <div className="flex items-center gap-4 mb-6 pb-6 border-b border-gray-100">
-            <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center">
-                <FileText size={32} />
-            </div>
-            <div>
-                <h2 className="text-2xl font-bold text-gray-900">{currentLesson.title}</h2>
-                <p className="text-gray-500">เอกสารการเรียนรู้ / กิจกรรม</p>
-            </div>
-        </div>
-        
-        <div className="prose max-w-none text-gray-600 text-lg leading-relaxed mb-8">
-            <p>{currentLesson.content?.text}</p>
-            {/* กรณีเป็นแบบสอบถาม (Mockup) */}
-            {currentLesson.id === 'final-survey' && (
-                <div className="bg-gray-50 p-6 rounded-xl border border-gray-200 text-center mt-4">
-                    <p className="mb-4">กรุณาทำแบบประเมินความพึงพอใจเพื่อพัฒนาหลักสูตรต่อไป</p>
-                    <a href="#" className="inline-block px-6 py-2 bg-white border border-primary text-primary rounded-lg font-bold hover:bg-blue-50 transition">
-                        เปิดแบบสอบถาม (Google Form)
-                    </a>
-                </div>
-            )}
-        </div>
+      <button type="button" onClick={onComplete} className="primary-button">
+        อ่านและทำความเข้าใจแล้ว
+        <ArrowRight size={16} />
+      </button>
+    </div>
+  );
+}
 
-        <div className="flex justify-end pt-4 border-t border-gray-50">
-            {!progressData.completedLessons.includes(currentLesson.id) ? (
-                <button onClick={markLessonComplete} className="px-6 py-3 bg-primary text-white rounded-xl font-bold shadow-lg hover:bg-blue-700 transition flex items-center gap-2">
-                    <CheckCircle size={20} /> ทำรายการเสร็จสมบูรณ์
-                </button>
-            ) : (
-                <div className="flex items-center gap-2 text-green-600 font-bold bg-green-50 px-4 py-2 rounded-lg">
-                    <CheckCircle size={20} /> ดำเนินการเรียบร้อยแล้ว
-                </div>
-            )}
+function renderQuizLesson({
+  lesson,
+  quizQuestions,
+  quizAnswers,
+  quizSubmitted,
+  quizScore,
+  cooldownRemaining,
+  onSelect,
+  onSubmit,
+  onRetry,
+  lastSavedScore,
+}) {
+  const passed = quizScore >= (lesson.content.passScore || 0);
+
+  return (
+    <div className="space-y-8">
+      <div className="grid gap-4 md:grid-cols-3">
+        <div className="rounded-[26px] border border-indigo-100 bg-indigo-50 px-5 py-5">
+          <div className="text-xs uppercase tracking-[0.24em] text-indigo-700">คะแนนผ่าน</div>
+          <div className="mt-3 font-display text-3xl font-semibold text-indigo-900">
+            {lesson.content.mode === "survey" ? "บันทึกคำตอบ" : `${lesson.content.passScore}/${quizQuestions.length}`}
+          </div>
         </div>
+        <div className="rounded-[26px] border border-emerald-100 bg-emerald-50 px-5 py-5">
+          <div className="text-xs uppercase tracking-[0.24em] text-emerald-700">คะแนนล่าสุด</div>
+          <div className="mt-3 font-display text-3xl font-semibold text-emerald-900">
+            {typeof lastSavedScore === "number" ? `${lastSavedScore} คะแนน` : "-"}
+          </div>
+        </div>
+        <div className="rounded-[26px] border border-amber-100 bg-amber-50 px-5 py-5">
+          <div className="text-xs uppercase tracking-[0.24em] text-amber-700">สถานะ</div>
+          <div className="mt-3 font-display text-3xl font-semibold text-amber-900">
+            {cooldownRemaining > 0 ? "รอเริ่มใหม่" : "พร้อมทำแบบทดสอบ"}
+          </div>
+        </div>
+      </div>
+
+      {lesson.content.description && (
+        <div className="rounded-[26px] border border-slate-200 bg-slate-50 px-5 py-4 text-sm leading-7 text-slate-600">
+          {lesson.content.description}
+        </div>
+      )}
+
+      {cooldownRemaining > 0 && (
+        <div className="rounded-[26px] border border-amber-200 bg-amber-50 px-5 py-4 text-sm leading-7 text-amber-800">
+          คุณใช้ครบจำนวนครั้งของแบบทดสอบนี้แล้ว กรุณารออีก{" "}
+          <span className="font-semibold">{formatCountdown(cooldownRemaining)}</span> ก่อนเริ่มใหม่อีกครั้ง
+        </div>
+      )}
+
+      <div className="space-y-4">
+        {quizQuestions.map((question, questionIndex) => (
+          <div key={question.id} className="rounded-[28px] border border-slate-200 bg-white p-5">
+            <div className="flex items-start gap-4">
+              <div className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-full bg-slate-950 text-sm font-semibold text-white">
+                {questionIndex + 1}
+              </div>
+              <div className="flex-1">
+                <p className="text-base font-medium leading-7 text-slate-900">{question.question}</p>
+                <div className="mt-4 grid gap-3">
+                  {question.options.map((option, optionIndex) => {
+                    const isSelected = quizAnswers[question.id] === optionIndex;
+                    const isCorrectAnswer = quizSubmitted && optionIndex === question.correctAnswer;
+                    const isWrongSelected = quizSubmitted && isSelected && optionIndex !== question.correctAnswer;
+
+                    return (
+                      <button
+                        key={`${question.id}-${option}`}
+                        type="button"
+                        disabled={quizSubmitted || cooldownRemaining > 0}
+                        onClick={() => onSelect(question.id, optionIndex)}
+                        className={`rounded-[22px] border px-4 py-4 text-left text-sm leading-6 transition ${
+                          isCorrectAnswer
+                            ? "border-emerald-300 bg-emerald-50 text-emerald-900"
+                            : isWrongSelected
+                              ? "border-red-300 bg-red-50 text-red-900"
+                              : isSelected
+                                ? "border-indigo-300 bg-indigo-50 text-indigo-900"
+                                : "border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-300 hover:bg-white"
+                        }`}
+                      >
+                        {option}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {quizSubmitted && (
+        <div className={`rounded-[28px] border px-5 py-5 text-sm leading-7 ${
+          passed || lesson.content.mode === "survey" || lesson.content.passScore === 0
+            ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+            : "border-amber-200 bg-amber-50 text-amber-900"
+        }`}>
+          {lesson.content.mode === "survey"
+            ? "บันทึกคำตอบสะท้อนผลเรียบร้อยแล้ว"
+            : `คะแนนที่ได้ ${quizScore} จาก ${quizQuestions.length} ข้อ`}
+        </div>
+      )}
+
+      <div className="flex flex-wrap gap-3">
+        <button type="button" onClick={onSubmit} disabled={quizSubmitted || cooldownRemaining > 0} className="primary-button">
+          ส่งแบบทดสอบ
+          <CheckCircle2 size={16} />
+        </button>
+
+        {quizSubmitted &&
+          !(passed || lesson.content.mode === "survey" || lesson.content.passScore === 0) &&
+          cooldownRemaining === 0 && (
+            <button type="button" onClick={onRetry} className="secondary-button">
+              ลองใหม่อีกครั้ง
+            </button>
+          )}
       </div>
     </div>
   );
+}
 
-  const renderQuizUI = () => {
-    const isPosttest = currentLesson.content?.isPosttest;
-    const maxAttempts = currentLesson.content?.maxAttempts || 5;
-    const isPassed = quizScore >= (currentLesson.content?.passScore || 0);
-    const isCompleted = progressData.completedLessons.includes(currentLesson.id);
+function renderCertificateLesson({ lesson, progress, currentUser, currentUserName, onDownload }) {
+  const reportId = makeUniqueId(lesson.content.uniquePrefix, currentUser?.uid);
+  const isFinalCertificate = lesson.content.certificateType === "final-certificate";
 
-    if (quizSubmitted || isCompleted) {
-      return (
-        <div className="max-w-2xl mx-auto text-center py-10 animate-fade-in-up">
-          <div className={`w-24 h-24 mx-auto rounded-full flex items-center justify-center mb-6 shadow-xl ${isPassed || isCompleted ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
-            {isPassed || isCompleted ? <Award size={48} /> : <RotateCcw size={48} />}
-          </div>
-          <h2 className="text-3xl font-black text-gray-900 mb-2">
-            {isCompleted ? "ผ่านการทดสอบแล้ว" : `คะแนน: ${quizScore} / ${quizQuestions.length}`}
-          </h2>
-          {isPosttest && !isPassed && !isCompleted && (
-             <div className="bg-red-50 text-red-700 px-4 py-2 rounded-lg inline-block mb-4 border border-red-200 font-bold">
-                สอบครั้งที่ {progressData.postTestAttempts} / {maxAttempts}
-             </div>
-          )}
-          <p className="text-gray-500 mb-8 text-lg">
-            {(isPassed || isCompleted) ? "คุณผ่านเกณฑ์การทดสอบเรียบร้อยแล้ว" : "คุณยังไม่ผ่านเกณฑ์ กรุณาทบทวนเนื้อหาและลองใหม่อีกครั้ง"}
+  return (
+    <div className="space-y-8">
+      <div className="grid gap-6 lg:grid-cols-[1.05fr_0.95fr]">
+        <div className="rounded-[30px] border border-slate-200 bg-white p-6">
+          <div className="section-tag">ความสำเร็จ</div>
+          <h3 className="mt-5 font-display text-3xl font-semibold text-slate-950">{lesson.title}</h3>
+          <p className="mt-4 text-sm leading-7 text-slate-600">
+            {isFinalCertificate
+              ? "เมื่อดาวน์โหลด certificate ระบบจะบันทึกการจบหลักสูตรให้ทันที พร้อมเก็บ badge ทั้งหมดในเส้นทางครู"
+              : "สร้างรายงานสรุปคำตอบของโมดูลนี้ เพื่อใช้เป็นหลักฐานการเรียนรู้และปลดล็อกโมดูลถัดไป"}
           </p>
-          <div className="flex justify-center gap-4">
-            {(!isPassed && !isCompleted) && (progressData.postTestAttempts < maxAttempts || !isPosttest) && (
-              <button onClick={retryQuiz} className="px-8 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-bold transition flex items-center gap-2">
-                <RotateCcw size={20} /> ทำข้อสอบใหม่
-              </button>
+
+          <div className="mt-6 rounded-[26px] border border-slate-200 bg-slate-50 p-5">
+            <div className="text-xs uppercase tracking-[0.24em] text-slate-500">รหัสเอกสาร</div>
+            <div className="mt-2 font-display text-2xl font-semibold text-slate-950">{reportId}</div>
+          </div>
+
+          <div className="mt-6 space-y-3">
+            <div className="rounded-[22px] border border-indigo-100 bg-indigo-50 px-4 py-4 text-sm text-indigo-900">
+              ผู้เรียน: {currentUserName}
+            </div>
+            <div className="rounded-[22px] border border-amber-100 bg-amber-50 px-4 py-4 text-sm text-amber-900">
+              Badge ที่ได้รับแล้ว: {progress.badges.length > 0 ? progress.badges.join(" • ") : "ยังไม่มี"}
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-[30px] border border-slate-200 bg-slate-950 p-6 text-white">
+          <div className="flex items-center gap-3 text-amber-200">
+            <Trophy size={18} />
+            <span className="text-xs uppercase tracking-[0.24em]">ตัวอย่าง</span>
+          </div>
+          <div className="mt-5 space-y-4 text-sm leading-7 text-slate-300">
+            <p>{isFinalCertificate ? "Certificate นี้จะยืนยันว่าคุณผ่านทุกโมดูล, Final Post-test และแบบประเมินความพึงพอใจแล้ว" : "Report Card จะรวมคำตอบและงานสำคัญของโมดูลนี้ไว้ในไฟล์เดียว"}</p>
+            <p>รูปแบบไฟล์เป็น SVG เพื่อให้ดาวน์โหลดได้แบบ client-side และเปิดใช้ต่อในงานเอกสารได้ทันที</p>
+          </div>
+        </div>
+      </div>
+
+      <button type="button" onClick={onDownload} className="primary-button">
+        ดาวน์โหลดไฟล์
+        <ArrowRight size={16} />
+      </button>
+    </div>
+  );
+}
+
+function renderActivityLesson(props) {
+  const { lesson } = props;
+
+  switch (lesson.activityType) {
+    case "insight_dimensions":
+      return renderInsightDimensions(props);
+    case "swot_visualizer":
+      return renderSwotVisualizer(props);
+    case "tows_matrix":
+      return renderTowsMatrix(props);
+    case "needs_detective":
+      return renderNeedsDetective(props);
+    case "pdca_action_plan":
+      return renderPdcaActionPlan(props);
+    case "dream_lab":
+      return renderSingleTextareaActivity({
+        title: "โมดูล 2 | Dream Lab",
+        prompt: "ถ้าไม่มีข้อจำกัดใดเลย คุณอยากเห็นอะไรเกิดขึ้นกับผู้เรียนหรือห้องเรียนของคุณ?",
+        value: props.courseState.module2.dreamLab,
+        onChange: (value) =>
+          props.updateModuleState("module2", (module) => ({ ...module, dreamLab: value })),
+        onComplete: props.onComplete,
+      });
+    case "vibe_check":
+      return renderSingleTextareaActivity({
+        title: "โมดูล 2 | Vibe Check",
+        prompt: "บรรยากาศการเรียนรู้แบบไหนที่คุณอยากเดินเข้าไปแล้วรู้สึกว่า ‘ใช่เลย’?",
+        value: props.courseState.module2.vibeCheck,
+        onChange: (value) =>
+          props.updateModuleState("module2", (module) => ({ ...module, vibeCheck: value })),
+        onComplete: props.onComplete,
+      });
+    default:
+      return renderModuleExtension(props);
+  }
+}
+
+function renderSingleTextareaActivity({ title, prompt, value, onChange, onComplete }) {
+  return (
+    <div className="space-y-8">
+      <section className="rounded-[30px] border border-slate-200 bg-white p-6">
+        <div className="section-tag">{title}</div>
+        <p className="mt-5 text-base leading-8 text-slate-700">{prompt}</p>
+        <textarea
+          rows={8}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          className="field-input mt-5 min-h-[220px] resize-y"
+          placeholder="พิมพ์คำตอบของคุณที่นี่..."
+        />
+      </section>
+
+      <button type="button" onClick={onComplete} className="primary-button">
+        บันทึกภารกิจนี้
+        <CheckCircle2 size={16} />
+      </button>
+    </div>
+  );
+}
+
+function renderInsightDimensions({ courseState, updateModuleState, onComplete }) {
+  const completedCount = Object.values(courseState.module1.dimensions).filter(
+    (entry) => entry.answer.trim(),
+  ).length;
+
+  return (
+    <div className="space-y-8">
+      <div className="rounded-[28px] border border-indigo-100 bg-indigo-50 p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold text-indigo-900">ภารกิจสแกนบริบท 9 มิติ</p>
+            <p className="mt-1 text-sm text-indigo-700">ตอบตามความจริงของพื้นที่ แล้วให้ระดับ pain point ในแต่ละหัวข้อ</p>
+          </div>
+          <div className="rounded-full border border-indigo-200 bg-white px-4 py-2 text-sm font-semibold text-indigo-800">{completedCount}/9 มิติ</div>
+        </div>
+      </div>
+
+      <div className="grid gap-5 lg:grid-cols-2">
+        {Object.entries(courseState.module1.dimensions).map(([key, entry], index) => (
+          <section key={key} className="rounded-[30px] border border-slate-200 bg-white p-5">
+            <h3 className="font-display text-2xl font-semibold text-slate-950">
+              {insightDimensions.find((dimension) => dimension.key === key)?.label || key}
+            </h3>
+            <p className="mt-2 text-xs uppercase tracking-[0.24em] text-slate-400">มิติที่ {index + 1}</p>
+            <textarea
+              value={entry.answer}
+              onChange={(event) =>
+                updateModuleState("module1", (module) => ({
+                  ...module,
+                  dimensions: {
+                    ...module.dimensions,
+                    [key]: { ...module.dimensions[key], answer: event.target.value },
+                  },
+                }))
+              }
+              rows={5}
+              className="field-input mt-4 min-h-[144px] resize-y"
+              placeholder="พิมพ์คำตอบของคุณ..."
+            />
+            <div className="mt-5">
+              <div className="mb-2 flex items-center justify-between text-sm text-slate-600">
+                <span>ระดับ pain point / problem</span>
+                <span className="font-semibold text-slate-900">{entry.rating || 0}/5</span>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="5"
+                value={entry.rating}
+                onChange={(event) =>
+                  updateModuleState("module1", (module) => ({
+                    ...module,
+                    dimensions: {
+                      ...module.dimensions,
+                      [key]: { ...module.dimensions[key], rating: Number(event.target.value) },
+                    },
+                  }))
+                }
+                className="w-full accent-indigo-600"
+              />
+            </div>
+          </section>
+        ))}
+      </div>
+
+      <button type="button" onClick={onComplete} className="primary-button">
+        บันทึก Mission 1
+        <CheckCircle2 size={16} />
+      </button>
+    </div>
+  );
+}
+
+function renderSwotVisualizer({
+  courseState,
+  insightTokens,
+  swotChartValues,
+  swotDrafts,
+  setSwotDrafts,
+  addSwotItem,
+  removeSwotItem,
+  onComplete,
+}) {
+  return (
+    <div className="space-y-8">
+      <div className="grid gap-6 xl:grid-cols-[1.08fr_0.92fr]">
+        <div className="rounded-[30px] border border-slate-200 bg-white p-6">
+          <div className="section-tag">คลังคำสำคัญ</div>
+          <p className="mt-4 text-sm text-slate-500">กดปุ่ม S/W/O/T ใต้แต่ละไอเดียเพื่อจัดกลุ่มลงใน SWOT</p>
+          <div className="mt-5 flex flex-wrap gap-3">
+            {insightTokens.length > 0 ? insightTokens.map((token) => (
+              <div key={token} className="rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-3">
+                <div className="text-sm font-medium text-slate-800">{token}</div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {swotBuckets.map((bucket) => (
+                    <button
+                      key={`${token}-${bucket.key}`}
+                      type="button"
+                      onClick={() => addSwotItem(bucket.key, token)}
+                      className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
+                    >
+                      {bucket.label.slice(0, 1)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )) : (
+              <div className="rounded-[24px] border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-500">
+                เมื่อคุณเขียนคำตอบใน Mission 1 แล้ว ระบบจะดึงวลีสำคัญมาช่วยจัด SWOT ให้เร็วขึ้น
+              </div>
             )}
           </div>
         </div>
-      );
-    }
 
-    return (
-      <div className="max-w-3xl mx-auto animate-fade-in-up">
-        <div className="bg-blue-50 border border-blue-100 p-6 rounded-2xl mb-8">
-          <div className="flex items-start gap-4">
-            <div className="bg-blue-100 p-2 rounded-lg text-primary"><CheckSquare size={24} /></div>
+        <div className="rounded-[30px] border border-slate-200 bg-white p-6">
+          <h3 className="font-display text-2xl font-semibold text-slate-950">SWOT Balance</h3>
+          <p className="mt-2 text-sm leading-7 text-slate-500">ดูสมดุลของมุมมองว่าตอนนี้คุณกำลังเห็นจุดแข็ง จุดอ่อน โอกาส และอุปสรรคครบพอหรือยัง</p>
+          <div className="mt-5">
+            <SwotBalanceChart values={swotChartValues} />
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-5 lg:grid-cols-2">
+        {swotBuckets.map((bucket) => (
+          <section key={bucket.key} className="rounded-[30px] border border-slate-200 bg-white p-6">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <h3 className="font-display text-2xl font-semibold text-slate-950">{bucket.thaiLabel}</h3>
+                <p className="mt-1 text-sm text-slate-500">{bucket.label}</p>
+              </div>
+              <div className="rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-700">
+                {courseState.module1.swot[bucket.key].length} รายการ
+              </div>
+            </div>
+
+            <div className="mt-5 flex gap-3">
+              <input
+                type="text"
+                value={swotDrafts[bucket.key]}
+                onChange={(event) => setSwotDrafts((previous) => ({ ...previous, [bucket.key]: event.target.value }))}
+                className="field-input"
+                placeholder={`พิมพ์ประเด็นเพิ่มใน ${bucket.thaiLabel}`}
+              />
+              <button type="button" onClick={() => addSwotItem(bucket.key, swotDrafts[bucket.key])} className="secondary-button shrink-0">
+                เพิ่ม
+              </button>
+            </div>
+
+            <div className="mt-5 flex flex-wrap gap-2">
+              {courseState.module1.swot[bucket.key].length > 0 ? courseState.module1.swot[bucket.key].map((item) => (
+                <button
+                  key={`${bucket.key}-${item}`}
+                  type="button"
+                  onClick={() => removeSwotItem(bucket.key, item)}
+                  className="rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 transition hover:border-red-200 hover:bg-red-50 hover:text-red-700"
+                >
+                  {item} ×
+                </button>
+              )) : <p className="text-sm text-slate-400">ยังไม่มีรายการในหมวดนี้</p>}
+            </div>
+          </section>
+        ))}
+      </div>
+
+      <button type="button" onClick={onComplete} className="primary-button">
+        บันทึก Mission 2
+        <CheckCircle2 size={16} />
+      </button>
+    </div>
+  );
+}
+
+function renderTowsMatrix({
+  courseState,
+  towsDraft,
+  setTowsDraft,
+  addStrategy,
+  removeStrategy,
+  onComplete,
+}) {
+  const internalOptions = [
+    ...courseState.module1.swot.strengths.map((item) => ({ bucket: "strengths", label: item })),
+    ...courseState.module1.swot.weaknesses.map((item) => ({ bucket: "weaknesses", label: item })),
+  ];
+  const externalOptions = [
+    ...courseState.module1.swot.opportunities.map((item) => ({ bucket: "opportunities", label: item })),
+    ...courseState.module1.swot.threats.map((item) => ({ bucket: "threats", label: item })),
+  ];
+  const strategyType = getStrategyType(towsDraft.internalBucket, towsDraft.externalBucket);
+
+  return (
+    <div className="space-y-8">
+      <div className="grid gap-6 xl:grid-cols-[1fr_1fr]">
+        <div className="rounded-[30px] border border-slate-200 bg-white p-6">
+          <div className="section-tag">ตัวช่วยสร้าง TOWS</div>
+          <div className="mt-5 grid gap-4">
             <div>
-              <h3 className="font-bold text-gray-900 text-lg">{currentLesson.title}</h3>
-              <p className="text-gray-600 text-sm mt-1">
-                ตอบคำถาม {quizQuestions.length} ข้อ 
-                {currentLesson.content?.passScore > 0 && ` (เกณฑ์ผ่าน ${currentLesson.content.passScore} คะแนน)`}
-              </p>
+              <label className="field-label" htmlFor="internal-factor">ปัจจัยภายใน (S/W)</label>
+              <select
+                id="internal-factor"
+                value={`${towsDraft.internalBucket}|||${towsDraft.internalValue}`}
+                onChange={(event) => {
+                  const [bucket, value] = event.target.value.split("|||");
+                  setTowsDraft((previous) => ({ ...previous, internalBucket: bucket, internalValue: value }));
+                }}
+                className="field-select"
+              >
+                <option value="strengths|||">เลือกปัจจัยภายใน</option>
+                {internalOptions.map((option) => (
+                  <option key={`${option.bucket}-${option.label}`} value={`${option.bucket}|||${option.label}`}>
+                    {option.bucket === "strengths" ? "S" : "W"} | {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="field-label" htmlFor="external-factor">ปัจจัยภายนอก (O/T)</label>
+              <select
+                id="external-factor"
+                value={`${towsDraft.externalBucket}|||${towsDraft.externalValue}`}
+                onChange={(event) => {
+                  const [bucket, value] = event.target.value.split("|||");
+                  setTowsDraft((previous) => ({ ...previous, externalBucket: bucket, externalValue: value }));
+                }}
+                className="field-select"
+              >
+                <option value="opportunities|||">เลือกปัจจัยภายนอก</option>
+                {externalOptions.map((option) => (
+                  <option key={`${option.bucket}-${option.label}`} value={`${option.bucket}|||${option.label}`}>
+                    {option.bucket === "opportunities" ? "O" : "T"} | {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="rounded-[24px] border border-indigo-100 bg-indigo-50 px-4 py-4 text-sm leading-7 text-indigo-900">
+              <span className="font-semibold">{strategyType}</span> : {getStrategyGuidance(strategyType)}
+            </div>
+
+            <input
+              type="text"
+              value={towsDraft.title}
+              onChange={(event) => setTowsDraft((previous) => ({ ...previous, title: event.target.value }))}
+              className="field-input"
+              placeholder="ชื่อกลยุทธ์"
+            />
+
+            <textarea
+              rows={5}
+              value={towsDraft.description}
+              onChange={(event) => setTowsDraft((previous) => ({ ...previous, description: event.target.value }))}
+              className="field-input min-h-[140px] resize-y"
+              placeholder="อธิบายว่าจะจับคู่สองปัจจัยนี้ให้เกิดแนวทางลงมือทำได้จริงอย่างไร"
+            />
+
+            <button type="button" onClick={addStrategy} className="primary-button">
+              เพิ่มกลยุทธ์
+              <Sparkles size={16} />
+            </button>
+          </div>
+        </div>
+
+        <div className="rounded-[30px] border border-slate-200 bg-slate-950 p-6 text-white">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <div className="section-tag border-white/10 bg-white/5 text-slate-200">คลังกลยุทธ์</div>
+              <h3 className="mt-4 font-display text-3xl font-semibold">กลยุทธ์ที่สร้างแล้ว</h3>
+            </div>
+            <div className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-slate-200">
+              {courseState.module1.strategies.length}/3 ขั้นต่ำ
             </div>
           </div>
-          {isPosttest && (
-             <div className="mt-4 flex items-center gap-2 text-sm text-orange-700 bg-orange-100/50 px-4 py-3 rounded-xl border border-orange-200">
-                <AlertTriangle size={18} /> 
-                <strong>คำเตือน:</strong> หากสอบไม่ผ่านครบ {maxAttempts} ครั้ง ระบบจะรีเซ็ตการเรียนรู้ใหม่ตั้งแต่ Module 1
-             </div>
-          )}
+
+          <div className="mt-6 space-y-3">
+            {courseState.module1.strategies.length > 0 ? courseState.module1.strategies.map((strategy) => (
+              <div key={strategy.id} className="rounded-[24px] border border-white/10 bg-white/5 p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.24em] text-amber-200">{strategy.type}</p>
+                    <h4 className="mt-2 text-lg font-semibold text-white">{strategy.title}</h4>
+                    <p className="mt-2 text-sm leading-7 text-slate-300">{strategy.description}</p>
+                  </div>
+                  <button type="button" onClick={() => removeStrategy(strategy.id)} className="rounded-full border border-white/10 px-3 py-1 text-xs text-slate-300 transition hover:border-red-300/30 hover:bg-red-400/10 hover:text-red-100">
+                    ลบ
+                  </button>
+                </div>
+              </div>
+            )) : <div className="rounded-[24px] border border-dashed border-white/15 bg-white/5 px-4 py-5 text-sm text-slate-400">ยังไม่มีกลยุทธ์ ลองเริ่มจากจับคู่ S/W กับ O/T ก่อนครับ</div>}
+          </div>
         </div>
-        <div className="space-y-6">
-          {quizQuestions.map((q, index) => (
-            <div key={q.id || index} className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
-              <h4 className="font-bold text-gray-800 text-lg mb-4">{index + 1}. {q.question}</h4>
-              <div className="space-y-3">
-                {q.options.map((option, optIndex) => (
-                  <label key={optIndex} className={`flex items-center p-4 rounded-xl border-2 cursor-pointer transition-all ${quizAnswers[q.id] === optIndex ? 'border-primary bg-primary/5' : 'border-gray-100 hover:border-gray-200'}`}>
-                    <input type="radio" name={`question-${q.id || index}`} className="w-5 h-5 text-primary" checked={quizAnswers[q.id] === optIndex} onChange={() => handleQuizSelect(q.id, optIndex)} />
-                    <span className="ml-3 text-gray-700 font-medium">{option}</span>
-                  </label>
-                ))}
+      </div>
+
+      <button type="button" onClick={onComplete} className="primary-button">
+        บันทึก Mission 3
+        <CheckCircle2 size={16} />
+      </button>
+    </div>
+  );
+}
+
+function renderNeedsDetective({ courseState, currentUser, updateModuleState, onComplete }) {
+  const selectedStrategy = courseState.module1.strategies.find(
+    (strategy) => strategy.id === courseState.module1.selectedStrategyId,
+  );
+  const insightCardId = makeUniqueId("INS", currentUser?.uid);
+
+  return (
+    <div className="space-y-8">
+      <div className="grid gap-6 lg:grid-cols-[1.05fr_0.95fr]">
+        <div className="rounded-[30px] border border-slate-200 bg-white p-6">
+          <div className="section-tag">Needs Detective</div>
+          <div className="mt-5 space-y-4">
+            {courseState.module1.strategies.length > 0 ? courseState.module1.strategies.map((strategy) => (
+              <div key={strategy.id} className="rounded-[24px] border border-slate-200 bg-slate-50 p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.24em] text-indigo-700">{strategy.type}</p>
+                    <h3 className="mt-2 text-lg font-semibold text-slate-950">{strategy.title}</h3>
+                    <p className="mt-2 text-sm leading-7 text-slate-600">{strategy.description}</p>
+                  </div>
+                  <input
+                    type="radio"
+                    name="selected-strategy"
+                    checked={courseState.module1.selectedStrategyId === strategy.id}
+                    onChange={() =>
+                      updateModuleState("module1", (module) => ({
+                        ...module,
+                        selectedStrategyId: strategy.id,
+                        insightCard: { ...module.insightCard, solution: module.insightCard.solution || strategy.title },
+                      }))
+                    }
+                    className="mt-1 h-5 w-5 accent-indigo-600"
+                  />
+                </div>
+              </div>
+            )) : <div className="rounded-[24px] border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-500">ยังไม่มีกลยุทธ์จาก Mission 3 กรุณากลับไปสร้างอย่างน้อย 3 แนวทางก่อนครับ</div>}
+          </div>
+        </div>
+
+        <div className="rounded-[30px] border border-slate-200 bg-slate-950 p-6 text-white">
+          <div className="section-tag border-white/10 bg-white/5 text-slate-200">The In-Sight Card</div>
+          <div className="mt-5 space-y-4">
+            <textarea
+              rows={3}
+              value={courseState.module1.insightCard.coreProblem}
+              onChange={(event) =>
+                updateModuleState("module1", (module) => ({
+                  ...module,
+                  insightCard: { ...module.insightCard, coreProblem: event.target.value },
+                }))
+              }
+              className="field-input min-h-[110px] resize-y border-white/10 bg-white/10 text-white placeholder:text-slate-400"
+              placeholder="Core Problem"
+            />
+            <textarea
+              rows={3}
+              value={courseState.module1.insightCard.realNeed}
+              onChange={(event) =>
+                updateModuleState("module1", (module) => ({
+                  ...module,
+                  insightCard: { ...module.insightCard, realNeed: event.target.value },
+                }))
+              }
+              className="field-input min-h-[110px] resize-y border-white/10 bg-white/10 text-white placeholder:text-slate-400"
+              placeholder="Real Need"
+            />
+            <textarea
+              rows={3}
+              value={courseState.module1.insightCard.solution}
+              onChange={(event) =>
+                updateModuleState("module1", (module) => ({
+                  ...module,
+                  insightCard: { ...module.insightCard, solution: event.target.value },
+                }))
+              }
+              className="field-input min-h-[110px] resize-y border-white/10 bg-white/10 text-white placeholder:text-slate-400"
+              placeholder="Solution"
+            />
+          </div>
+
+          <div className="mt-6 rounded-[24px] border border-white/10 bg-white/5 p-4 text-sm leading-7 text-slate-300">
+            <p className="font-semibold text-white">ตัวอย่างสรุป</p>
+            <p className="mt-2">กลยุทธ์ที่เลือก: {selectedStrategy?.title || "-"}</p>
+            <p className="mt-1">รหัสอ้างอิง: {insightCardId}</p>
+          </div>
+        </div>
+      </div>
+
+      <button type="button" onClick={onComplete} className="primary-button">
+        บันทึก Mission 4
+        <CheckCircle2 size={16} />
+      </button>
+    </div>
+  );
+}
+
+function renderPdcaActionPlan({ courseState, updateModuleState, onComplete }) {
+  const pdcaFields = [
+    { key: "plan", label: "Plan", placeholder: "วางแผนว่าจะเริ่มจากอะไร ใครเกี่ยวข้อง และทรัพยากรอะไรที่ต้องใช้" },
+    { key: "do", label: "Do", placeholder: "ลงมือทำกิจกรรมหรือแนวทางที่ออกแบบไว้จริงอย่างไร" },
+    { key: "check", label: "Check", placeholder: "จะวัดหรือตรวจสอบผลลัพธ์อย่างไร" },
+    { key: "act", label: "Act", placeholder: "ถ้าผลออกมาดีหรือยังไม่ดี จะปรับอย่างไรต่อ" },
+  ];
+
+  return (
+    <div className="space-y-8">
+      <div className="grid gap-5 lg:grid-cols-2">
+        {pdcaFields.map((field) => (
+          <section key={field.key} className="rounded-[30px] border border-slate-200 bg-white p-6">
+            <h3 className="font-display text-3xl font-semibold text-slate-950">{field.label}</h3>
+            <textarea
+              rows={6}
+              value={courseState.module1.actionPlan[field.key]}
+              onChange={(event) =>
+                updateModuleState("module1", (module) => ({
+                  ...module,
+                  actionPlan: { ...module.actionPlan, [field.key]: event.target.value },
+                }))
+              }
+              className="field-input mt-4 min-h-[170px] resize-y"
+              placeholder={field.placeholder}
+            />
+          </section>
+        ))}
+      </div>
+
+      <button type="button" onClick={onComplete} className="primary-button">
+        บันทึก Mission 5
+        <CheckCircle2 size={16} />
+      </button>
+    </div>
+  );
+}
+
+function renderModuleExtension(props) {
+  const { lesson } = props;
+
+  switch (lesson.activityType) {
+    case "roadmap_builder":
+      return renderRoadmapBuilder(props);
+    case "fivewoneh":
+      return renderFiveWOneH(props);
+    case "smart_goal":
+      return renderSmartGoal(props);
+    case "quality_check":
+      return renderQualityCheck(props);
+    case "plc_matchmaking":
+      return renderPlcMatchmaking(props);
+    case "plc_report":
+      return renderPlcReport(props);
+    case "pitching_session":
+      return renderPitchingSession(props);
+    case "innovation_lab":
+      return renderInnovationLab(props);
+    case "lesson_plan":
+      return renderLessonPlan(props);
+    case "crafting_session":
+      return renderCraftingSession(props);
+    case "classroom_trial":
+      return renderClassroomTrial(props);
+    case "reflection_log":
+      return renderReflectionLog(props);
+    case "growth_plan":
+      return renderGrowthPlan(props);
+    case "platform_survey":
+      return renderPlatformSurvey(props);
+    default:
+      return (
+        <div className="rounded-[28px] border border-slate-200 bg-slate-50 p-6 text-sm leading-7 text-slate-600">
+          กิจกรรมนี้กำลังอยู่ระหว่างเชื่อมต่อข้อมูล กรุณาตรวจสอบอีกครั้งภายหลัง
+        </div>
+      );
+  }
+}
+
+function renderRoadmapBuilder({ courseState, updateModuleState, onComplete }) {
+  return (
+    <div className="space-y-8">
+      <section className="rounded-[30px] border border-slate-200 bg-white p-6">
+        <div className="section-tag">Mapping the Journey</div>
+        <div className="mt-6 space-y-5">
+          {courseState.module2.roadmap.map((week, index) => (
+            <div key={week.week} className="rounded-[26px] border border-slate-200 bg-slate-50 p-5">
+              <h3 className="font-display text-2xl font-semibold text-slate-950">{week.week}</h3>
+              <div className="mt-4 grid gap-4">
+                <input
+                  type="text"
+                  value={week.focus}
+                  onChange={(event) =>
+                    updateModuleState("module2", (module) => ({
+                      ...module,
+                      roadmap: module.roadmap.map((item, roadmapIndex) => roadmapIndex === index ? { ...item, focus: event.target.value } : item),
+                    }))
+                  }
+                  className="field-input"
+                  placeholder="โฟกัสของสัปดาห์"
+                />
+                <textarea
+                  rows={3}
+                  value={week.actions}
+                  onChange={(event) =>
+                    updateModuleState("module2", (module) => ({
+                      ...module,
+                      roadmap: module.roadmap.map((item, roadmapIndex) => roadmapIndex === index ? { ...item, actions: event.target.value } : item),
+                    }))
+                  }
+                  className="field-input min-h-[110px] resize-y"
+                  placeholder="กิจกรรมหรือสิ่งที่จะลงมือทำจริง"
+                />
+                <input
+                  type="text"
+                  value={week.evidence}
+                  onChange={(event) =>
+                    updateModuleState("module2", (module) => ({
+                      ...module,
+                      roadmap: module.roadmap.map((item, roadmapIndex) => roadmapIndex === index ? { ...item, evidence: event.target.value } : item),
+                    }))
+                  }
+                  className="field-input"
+                  placeholder="หลักฐานความก้าวหน้า"
+                />
               </div>
             </div>
           ))}
         </div>
-        <div className="mt-10 flex justify-end">
-          <button onClick={submitQuiz} disabled={Object.keys(quizAnswers).length < quizQuestions.length} className="px-8 py-4 bg-primary text-white rounded-xl font-bold shadow-lg hover:bg-blue-700 transition-all disabled:opacity-50">
-            ส่งคำตอบ <CheckCircle size={20} />
-          </button>
+      </section>
+      <button type="button" onClick={onComplete} className="primary-button">บันทึก Mission 3<CheckCircle2 size={16} /></button>
+    </div>
+  );
+}
+
+function renderFiveWOneH({ courseState, updateModuleState, onComplete }) {
+  const labels = ["who", "what", "when", "where", "why", "how"];
+  return (
+    <div className="space-y-8">
+      <section className="rounded-[30px] border border-slate-200 bg-white p-6">
+        <div className="section-tag">Define 5W1H</div>
+        <div className="mt-6 grid gap-4 md:grid-cols-2">
+          {labels.map((key) => (
+            <textarea
+              key={key}
+              rows={4}
+              value={courseState.module2.fiveWOneH[key]}
+              onChange={(event) =>
+                updateModuleState("module2", (module) => ({
+                  ...module,
+                  fiveWOneH: { ...module.fiveWOneH, [key]: event.target.value },
+                }))
+              }
+              className="field-input min-h-[120px] resize-y"
+              placeholder={key.toUpperCase()}
+            />
+          ))}
         </div>
-      </div>
-    );
-  };
+      </section>
+      <button type="button" onClick={onComplete} className="primary-button">บันทึก Mission 4<CheckCircle2 size={16} /></button>
+    </div>
+  );
+}
 
-  // ✅ 4. ปรับปรุง Render Certificate (เพิ่มเงื่อนไข)
-  const renderCertificate = () => {
-    if (currentLesson.content?.isModule1ReportCard) {
-      const moduleOnePosttestPassed = progressData.completedLessons.includes('m1-posttest');
-      const insightId = `INS-${new Date().getFullYear()}-${String((currentUser?.uid || '0000').slice(-4)).toUpperCase()}`;
-
-      const downloadReportCard = () => {
-        const reportSvg = `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800">
-  <rect width="1200" height="800" fill="#eef2ff" />
-  <rect x="40" y="40" width="1120" height="720" rx="28" fill="#ffffff" stroke="#c7d2fe" stroke-width="4" />
-  <text x="80" y="130" font-size="46" font-family="Arial" font-weight="700" fill="#312e81">In-Sight Report Card</text>
-  <text x="80" y="180" font-size="24" font-family="Arial" fill="#4338ca">Badge: ${currentLesson.content?.badgeName || 'In-Sight Badge'}</text>
-  <text x="80" y="220" font-size="20" font-family="Arial" fill="#334155">ID: ${insightId}</text>
-  <text x="80" y="280" font-size="22" font-family="Arial" fill="#0f172a">Selected Strategy:</text>
-  <text x="80" y="320" font-size="20" font-family="Arial" fill="#1e293b">${(moduleOneState.selectedStrategy || '-').replace(/&/g, 'and')}</text>
-  <text x="80" y="380" font-size="22" font-family="Arial" fill="#0f172a">PDCA Highlights</text>
-  <text x="80" y="420" font-size="18" font-family="Arial" fill="#1e293b">Plan: ${(moduleOneState.actionPlan.plan || '-').replace(/&/g, 'and')}</text>
-  <text x="80" y="450" font-size="18" font-family="Arial" fill="#1e293b">Do: ${(moduleOneState.actionPlan.do || '-').replace(/&/g, 'and')}</text>
-  <text x="80" y="480" font-size="18" font-family="Arial" fill="#1e293b">Check: ${(moduleOneState.actionPlan.check || '-').replace(/&/g, 'and')}</text>
-  <text x="80" y="510" font-size="18" font-family="Arial" fill="#1e293b">Act: ${(moduleOneState.actionPlan.act || '-').replace(/&/g, 'and')}</text>
-  <text x="80" y="590" font-size="22" font-family="Arial" fill="#0f172a">Module 1 Post-test Score: ${moduleOneState.posttestScore ?? '-'}/5</text>
-  <text x="80" y="670" font-size="20" font-family="Arial" fill="#b45309">Unlocked: Module 2</text>
-</svg>`;
-        const blob = new Blob([reportSvg], { type: 'image/svg+xml' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `insight-report-card-${insightId}.svg`;
-        link.click();
-        URL.revokeObjectURL(url);
-      };
-
-      if (!moduleOnePosttestPassed) {
-        return (
-          <div className="animate-fade-in-up text-center py-20">
-            <Lock size={64} className="mx-auto text-gray-300 mb-6" />
-            <h2 className="text-2xl font-bold text-gray-700 mb-2">ยังไม่ปลดล็อก In-Sight Badge</h2>
-            <p className="text-gray-500">กรุณาผ่าน Post-test [Module 1] (อย่างน้อย 3/5 คะแนน) ก่อนครับ</p>
-          </div>
-        );
-      }
-
-      return (
-        <div className="animate-fade-in-up text-center py-12">
-          <Award size={80} className="mx-auto text-amber-500 mb-6" />
-          <h2 className="text-3xl font-black text-gray-900 mb-3">รับรางวัล {currentLesson.content?.badgeName}</h2>
-          <p className="text-gray-600 mb-2">Report Card ID: <span className="font-bold">{insightId}</span></p>
-          <p className="text-gray-500 mb-8 max-w-2xl mx-auto">ระบบสรุปคำตอบจาก Missions ทั้งหมดและคะแนน Post-test ของ Module 1 เรียบร้อยแล้ว คุณสามารถดาวน์โหลดเป็นไฟล์ภาพได้ทันที และ Module 2 ถูกปลดล็อกแล้ว</p>
-          <div className="flex justify-center gap-3">
-            {!progressData.completedLessons.includes(currentLesson.id) && (
-              <button onClick={markLessonComplete} className="px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold shadow hover:bg-indigo-700 transition flex items-center gap-2">
-                <CheckCircle size={18} /> ยืนยันรับ Badge
-              </button>
-            )}
-            <button onClick={downloadReportCard} className="px-6 py-3 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-xl font-bold shadow hover:shadow-lg transition flex items-center gap-2">
-              <FileText size={18} /> ดาวน์โหลด Report Card (SVG)
-            </button>
-          </div>
+function renderSmartGoal({ courseState, updateModuleState, onComplete }) {
+  const labels = ["specific", "measurable", "achievable", "relevant", "timeBound"];
+  return (
+    <div className="space-y-8">
+      <section className="rounded-[30px] border border-slate-200 bg-white p-6">
+        <div className="section-tag">SMART Objective</div>
+        <div className="mt-6 grid gap-4">
+          {labels.map((key) => (
+            <textarea
+              key={key}
+              rows={3}
+              value={courseState.module2.smartGoal[key]}
+              onChange={(event) =>
+                updateModuleState("module2", (module) => ({
+                  ...module,
+                  smartGoal: { ...module.smartGoal, [key]: event.target.value },
+                }))
+              }
+              className="field-input min-h-[110px] resize-y"
+              placeholder={key}
+            />
+          ))}
         </div>
-      );
-    }
+      </section>
+      <button type="button" onClick={onComplete} className="primary-button">บันทึก Mission 5<CheckCircle2 size={16} /></button>
+    </div>
+  );
+}
 
-    // เงื่อนไข: ต้องผ่าน Post-test (posttest-exam) และทำ Survey (final-survey) แล้ว
-    const isPostTestPassed = progressData.completedLessons.includes("posttest-exam");
-    const isSurveyDone = progressData.completedLessons.includes("final-survey");
-
-    if (!isPostTestPassed) {
-        return (
-            <div className="animate-fade-in-up text-center py-20">
-                <Lock size={64} className="mx-auto text-gray-300 mb-6" />
-                <h2 className="text-2xl font-bold text-gray-700 mb-2">ยังไม่ผ่านเกณฑ์</h2>
-                <p className="text-gray-500">กรุณาทำแบบทดสอบ Post-test ให้ผ่านเกณฑ์ก่อนครับ</p>
-            </div>
-        );
-    }
-
-    if (!isSurveyDone) {
-        return (
-            <div className="animate-fade-in-up text-center py-20">
-                <div className="w-20 h-20 bg-yellow-100 text-yellow-600 rounded-full flex items-center justify-center mx-auto mb-6 animate-pulse">
-                    <FileText size={40} />
-                </div>
-                <h2 className="text-2xl font-bold text-gray-800 mb-2">เหลืออีกเพียงขั้นตอนเดียว!</h2>
-                <p className="text-gray-500 mb-8">กรุณาทำแบบประเมินความพึงพอใจให้เสร็จสมบูรณ์ เพื่อปลดล็อกเกียรติบัตร</p>
-                <button 
-                    // หา index ของ final-survey แล้วเปลี่ยนหน้าไปหา
-                    onClick={() => {
-                        const finalModIdx = teacherCourseData.modules.length - 1; // โมดูลสุดท้าย
-                        const surveyLessonIdx = teacherCourseData.modules[finalModIdx].lessons.findIndex(l => l.id === 'final-survey');
-                        if (surveyLessonIdx !== -1) handleLessonChange(finalModIdx, surveyLessonIdx);
-                    }}
-                    className="px-8 py-3 bg-primary text-white rounded-xl font-bold shadow-lg hover:bg-blue-700 transition flex items-center gap-2 mx-auto"
-                >
-                    ไปที่แบบประเมิน <ArrowRight size={20} />
-                </button>
-            </div>
-        );
-    }
-
-    // ถ้าครบทุกเงื่อนไข -> แสดงปุ่มโหลด
-    return (
-        <div className="animate-fade-in-up text-center py-12">
-            <Award size={80} className="mx-auto text-yellow-500 mb-6" />
-            <h2 className="text-3xl font-black text-gray-900 mb-4">ยินดีด้วย! คุณผ่านหลักสูตรแล้ว</h2>
-            <p className="text-gray-500 mb-8 max-w-lg mx-auto">
-                คุณได้ผ่านการทดสอบและกิจกรรมครบถ้วนตามหลักสูตร InSPIRE for Teacher
-            </p>
-            <button className="px-8 py-4 bg-gradient-to-r from-yellow-500 to-orange-500 text-white rounded-2xl font-bold shadow-xl hover:shadow-2xl hover:-translate-y-1 transition flex items-center gap-2 mx-auto">
-                <FileText size={24} /> ดาวน์โหลดเกียรติบัตร (PDF)
-            </button>
-        </div>
-    );
-  };
-
-  if (loading) return <div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin text-primary" size={40} /></div>;
-  if (!currentModule || !currentLesson) return <div className="p-8 text-center">Data Error: Module Not Found</div>;
+function renderQualityCheck({ courseState, updateModuleState, onComplete }) {
+  const fields = [
+    { key: "oecd", placeholder: "เชื่อมกับ OECD Learning Compass 2030 อย่างไร" },
+    { key: "royalPolicy", placeholder: "เชื่อมกับพระบรมราโชบาย ร.10 อย่างไร" },
+    { key: "sez", placeholder: "เชื่อมกับ SEZ ตาก อย่างไร" },
+  ];
 
   return (
-    <div className="flex h-screen bg-gray-50 font-sans overflow-hidden">
-      <aside className={`fixed inset-y-0 left-0 z-30 w-80 bg-white border-r border-gray-200 transform transition-transform duration-300 flex flex-col ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:relative md:translate-x-0`}>
-        <div className="p-5 border-b border-gray-100 bg-white flex items-center justify-between">
-          <h2 className="font-bold text-gray-800 truncate pr-2 text-lg">InSPIRE 360°</h2>
-          <button onClick={() => navigate('/dashboard')} className="p-2 hover:bg-gray-100 rounded-lg text-gray-500 transition"><ChevronLeft size={20} /></button>
-        </div>
-        <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
-          {currentCourse.modules.map((module, mIndex) => {
-            const isLocked = mIndex > progressData.currentModuleIndex;
-            
-            let moduleLabel = "";
-            if (module.id.includes('pretest')) moduleLabel = "Pre-test";
-            else if (module.id.includes('posttest')) moduleLabel = "Post-test";
-            else if (module.id.includes('final')) moduleLabel = "Certificate";
-            else moduleLabel = `Module ${mIndex}`; 
+    <div className="space-y-8">
+      <div className="grid gap-5 lg:grid-cols-3">
+        {fields.map((field) => (
+          <section key={field.key} className="rounded-[30px] border border-slate-200 bg-white p-6">
+            <textarea
+              rows={8}
+              value={courseState.module2.qualityCheck[field.key]}
+              onChange={(event) =>
+                updateModuleState("module2", (module) => ({
+                  ...module,
+                  qualityCheck: { ...module.qualityCheck, [field.key]: event.target.value },
+                }))
+              }
+              className="field-input min-h-[240px] resize-y"
+              placeholder={field.placeholder}
+            />
+          </section>
+        ))}
+      </div>
+      <button type="button" onClick={onComplete} className="primary-button">บันทึก Mission 6<CheckCircle2 size={16} /></button>
+    </div>
+  );
+}
 
-            return (
-                <div key={module.id} className={`rounded-xl overflow-hidden border border-transparent ${isLocked ? 'opacity-60 grayscale' : ''}`}>
-                <button onClick={() => !isLocked && toggleModule(mIndex)} disabled={isLocked} className={`w-full px-4 py-3 flex items-center justify-between transition-colors rounded-lg ${expandedModules[mIndex] ? 'bg-gray-50' : 'hover:bg-gray-50'}`}>
-                    <div className="text-left flex items-center gap-2">
-                        {isLocked && <Lock size={14} className="text-gray-400" />}
-                        <div>
-                            <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mb-0.5">{moduleLabel}</p>
-                            <h3 className="text-sm font-bold text-gray-700 truncate w-48">{module.title.split(':')[1] || module.title}</h3>
-                        </div>
-                    </div>
-                    {!isLocked && (expandedModules[mIndex] ? <ChevronDown size={16} className="text-gray-400" /> : <ChevronRight size={16} className="text-gray-400" />)}
-                </button>
-                {!isLocked && expandedModules[mIndex] && (
-                    <div className="mt-1 ml-2 pl-2 border-l-2 border-gray-100 space-y-1 mb-2">
-                    {module.lessons.map((lesson, lIndex) => {
-                        const isActive = mIndex === activeModuleIndex && lIndex === activeLessonIndex;
-                        const isCompleted = progressData.completedLessons.includes(lesson.id);
-                        return (
-                        <button key={lesson.id} onClick={() => handleLessonChange(mIndex, lIndex)} className={`w-full px-3 py-2.5 flex items-center gap-3 text-left rounded-lg transition-all ${isActive ? 'bg-primary text-white shadow-md shadow-primary/30' : 'text-gray-600 hover:bg-gray-50'}`}>
-                            {isCompleted ? <CheckCircle size={16} className={isActive ? 'text-white' : 'text-green-500'} /> : isActive ? <PlayCircle size={16} className="flex-shrink-0" /> : getIcon(lesson.iconName, "w-4 h-4 opacity-70")}
-                            <span className="text-sm font-medium truncate">{lesson.title}</span>
-                        </button>
-                        );
-                    })}
-                    </div>
-                )}
-                </div>
-            );
-          })}
+function renderPlcMatchmaking({ courseState, updateModuleState, generatePlcMatch, onComplete }) {
+  return (
+    <div className="space-y-8">
+      <section className="rounded-[30px] border border-slate-200 bg-white p-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="section-tag">PLC Matchmaking</div>
+          <button type="button" onClick={generatePlcMatch} className="secondary-button">สุ่มคู่ครูออนไลน์</button>
         </div>
-      </aside>
-      <main className="flex-1 flex flex-col min-w-0 bg-white relative">
-        <header className="h-16 border-b border-gray-100 flex items-center justify-between px-4 md:px-8 bg-white/80 backdrop-blur-md sticky top-0 z-20">
-          <div className="flex items-center gap-4">
-            <button onClick={() => setSidebarOpen(!isSidebarOpen)} className="p-2 hover:bg-gray-100 rounded-lg text-gray-600 md:hidden"><Menu size={24} /></button>
-            <h1 className="text-lg font-bold text-gray-800 truncate hidden md:block">{currentLesson.title}</h1>
-          </div>
-          {progressData.completedLessons.includes(currentLesson.id) ? (
-             <span className="px-3 py-1 bg-green-100 text-green-700 text-xs font-bold rounded-full flex items-center gap-1"><CheckCircle size={14} /> Completed</span>
-          ) : (<span className="px-3 py-1 bg-gray-100 text-gray-500 text-xs font-bold rounded-full">In Progress</span>)}
-        </header>
-        <div className="flex-1 overflow-y-auto p-4 md:p-8 bg-gray-50/50">
-            <div className="max-w-5xl mx-auto">
-                {currentLesson.type === 'video' && renderVideo()}
-                {currentLesson.type === 'quiz' && renderQuizUI()}
-                {currentLesson.type === 'activity' && renderActivity()}
-                {currentLesson.type === 'article' && renderArticle()} 
-                {currentLesson.type === 'certificate' && renderCertificate()}
-            </div>
+        <div className="mt-6 grid gap-4 md:grid-cols-2">
+          {[
+            ["meetingTopic", "หัวข้อ PLC จาก pain point"],
+            ["pairedTeacherName", "คู่ PLC"],
+            ["pairedTeacherUid", "รหัสคู่ PLC"],
+            ["meetingDate", "วันที่นัดหมาย", "date"],
+            ["meetingTime", "เวลา", "time"],
+            ["meetLink", "ลิงก์ Google Meet", "url"],
+          ].map(([key, placeholder, type = "text"]) => (
+            <input
+              key={key}
+              type={type}
+              value={courseState.module3[key]}
+              onChange={(event) =>
+                updateModuleState("module3", (module) => ({ ...module, [key]: event.target.value }))
+              }
+              className={`field-input ${key === "meetingTopic" || key === "meetLink" ? "md:col-span-2" : ""}`}
+              placeholder={placeholder}
+            />
+          ))}
         </div>
-      </main>
+      </section>
+      <button type="button" onClick={onComplete} className="primary-button">บันทึก Mission 1<CheckCircle2 size={16} /></button>
+    </div>
+  );
+}
+
+function renderPlcReport({ courseState, updateModuleState, onComplete }) {
+  return (
+    <div className="space-y-8">
+      <section className="rounded-[30px] border border-slate-200 bg-white p-6">
+        <div className="section-tag">PLC Report</div>
+        <div className="mt-6 space-y-4">
+          <textarea
+            rows={8}
+            value={courseState.module3.plcReport}
+            onChange={(event) =>
+              updateModuleState("module3", (module) => ({ ...module, plcReport: event.target.value }))
+            }
+            className="field-input min-h-[220px] resize-y"
+            placeholder="สรุปสิ่งที่ได้เรียนรู้จากการประชุม PLC"
+          />
+          <input
+            type="url"
+            value={courseState.module3.plcScreenshotUrl}
+            onChange={(event) =>
+              updateModuleState("module3", (module) => ({ ...module, plcScreenshotUrl: event.target.value }))
+            }
+            className="field-input"
+            placeholder="ลิงก์ภาพหน้าจอหรือหลักฐานการประชุม"
+          />
+        </div>
+      </section>
+      <button type="button" onClick={onComplete} className="primary-button">บันทึก Mission 2<CheckCircle2 size={16} /></button>
+    </div>
+  );
+}
+
+function renderPitchingSession({ courseState, updateModuleState, onComplete }) {
+  return (
+    <div className="space-y-8">
+      <section className="rounded-[30px] border border-slate-200 bg-white p-6">
+        <div className="section-tag">Pitching 1 Minute</div>
+        <div className="mt-6 space-y-4">
+          <textarea
+            rows={8}
+            value={courseState.module3.pitchScript}
+            onChange={(event) =>
+              updateModuleState("module3", (module) => ({ ...module, pitchScript: event.target.value }))
+            }
+            className="field-input min-h-[220px] resize-y"
+            placeholder="ร่างสคริปต์ 1 นาที"
+          />
+          <input
+            type="url"
+            value={courseState.module3.pitchAudioUrl}
+            onChange={(event) =>
+              updateModuleState("module3", (module) => ({ ...module, pitchAudioUrl: event.target.value }))
+            }
+            className="field-input"
+            placeholder="ลิงก์ไฟล์เสียงหรือหลักฐานการอัปโหลด"
+          />
+        </div>
+      </section>
+      <button type="button" onClick={onComplete} className="primary-button">บันทึก Mission 3<CheckCircle2 size={16} /></button>
+    </div>
+  );
+}
+
+function renderInnovationLab({ courseState, updateModuleState, onComplete }) {
+  const fields = [
+    ["innovationName", "ชื่อนวัตกรรม"],
+    ["hardware", "Hardware"],
+    ["software", "Software"],
+    ["activeLearning", "รูปแบบ Active Learning"],
+  ];
+
+  return (
+    <div className="space-y-8">
+      <section className="rounded-[30px] border border-slate-200 bg-white p-6">
+        <div className="section-tag">Innovation Lab</div>
+        <div className="mt-6 grid gap-4 md:grid-cols-2">
+          {fields.map(([key, placeholder]) => (
+            <input
+              key={key}
+              type="text"
+              value={courseState.module4[key]}
+              onChange={(event) =>
+                updateModuleState("module4", (module) => ({ ...module, [key]: event.target.value }))
+              }
+              className="field-input"
+              placeholder={placeholder}
+            />
+          ))}
+        </div>
+      </section>
+      <button type="button" onClick={onComplete} className="primary-button">บันทึก Mission 1<CheckCircle2 size={16} /></button>
+    </div>
+  );
+}
+
+function renderLessonPlan({ courseState, updateModuleState, onComplete }) {
+  return (
+    <div className="space-y-8">
+      <section className="rounded-[30px] border border-slate-200 bg-white p-6">
+        <div className="section-tag">Lesson Plan</div>
+        <div className="mt-6 space-y-4">
+          <textarea
+            rows={9}
+            value={courseState.module4.lessonPlan}
+            onChange={(event) =>
+              updateModuleState("module4", (module) => ({ ...module, lessonPlan: event.target.value }))
+            }
+            className="field-input min-h-[240px] resize-y"
+            placeholder="แผนการจัดการเรียนรู้"
+          />
+          <textarea
+            rows={4}
+            value={courseState.module4.assessmentPlan}
+            onChange={(event) =>
+              updateModuleState("module4", (module) => ({ ...module, assessmentPlan: event.target.value }))
+            }
+            className="field-input min-h-[130px] resize-y"
+            placeholder="Assessment Plan"
+          />
+        </div>
+      </section>
+      <button type="button" onClick={onComplete} className="primary-button">บันทึก Mission 2<CheckCircle2 size={16} /></button>
+    </div>
+  );
+}
+
+function renderCraftingSession({ courseState, updateModuleState, onComplete }) {
+  return (
+    <div className="space-y-8">
+      <section className="rounded-[30px] border border-slate-200 bg-white p-6">
+        <div className="section-tag">Crafting Session</div>
+        <div className="mt-6 space-y-4">
+          <input
+            type="url"
+            value={courseState.module4.mediaEvidenceUrl}
+            onChange={(event) =>
+              updateModuleState("module4", (module) => ({ ...module, mediaEvidenceUrl: event.target.value }))
+            }
+            className="field-input"
+            placeholder="ลิงก์สื่อหรือหลักฐานการอัปโหลด"
+          />
+          <textarea
+            rows={6}
+            value={courseState.module4.mediaDescription}
+            onChange={(event) =>
+              updateModuleState("module4", (module) => ({ ...module, mediaDescription: event.target.value }))
+            }
+            className="field-input min-h-[170px] resize-y"
+            placeholder="คำอธิบายสื่อ"
+          />
+        </div>
+      </section>
+      <button type="button" onClick={onComplete} className="primary-button">บันทึก Mission 3<CheckCircle2 size={16} /></button>
+    </div>
+  );
+}
+
+function renderClassroomTrial({ courseState, updateModuleState, onComplete }) {
+  return (
+    <div className="space-y-8">
+      <section className="rounded-[30px] border border-slate-200 bg-white p-6">
+        <div className="section-tag">Teaching in Action</div>
+        <div className="mt-6 space-y-4">
+          <input
+            type="url"
+            value={courseState.module5.teachingClipUrl}
+            onChange={(event) =>
+              updateModuleState("module5", (module) => ({ ...module, teachingClipUrl: event.target.value }))
+            }
+            className="field-input"
+            placeholder="ลิงก์คลิปการสอนจริง 10 นาที"
+          />
+          <textarea
+            rows={6}
+            value={courseState.module5.classroomContext}
+            onChange={(event) =>
+              updateModuleState("module5", (module) => ({ ...module, classroomContext: event.target.value }))
+            }
+            className="field-input min-h-[170px] resize-y"
+            placeholder="บริบทของคาบเรียน"
+          />
+        </div>
+      </section>
+      <button type="button" onClick={onComplete} className="primary-button">บันทึก Mission 1<CheckCircle2 size={16} /></button>
+    </div>
+  );
+}
+
+function renderReflectionLog({ courseState, updateModuleState, onComplete }) {
+  return (
+    <div className="space-y-8">
+      <section className="rounded-[30px] border border-slate-200 bg-white p-6">
+        <div className="section-tag">Reflection Log</div>
+        <div className="mt-6 space-y-4">
+          <textarea
+            rows={8}
+            value={courseState.module5.reflectionLog}
+            onChange={(event) =>
+              updateModuleState("module5", (module) => ({ ...module, reflectionLog: event.target.value }))
+            }
+            className="field-input min-h-[220px] resize-y"
+            placeholder="บันทึกหลังการสอน"
+          />
+          <textarea
+            rows={5}
+            value={courseState.module5.learnerResponse}
+            onChange={(event) =>
+              updateModuleState("module5", (module) => ({ ...module, learnerResponse: event.target.value }))
+            }
+            className="field-input min-h-[150px] resize-y"
+            placeholder="เสียงตอบรับหรือพฤติกรรมของผู้เรียน"
+          />
+        </div>
+      </section>
+      <button type="button" onClick={onComplete} className="primary-button">บันทึก Mission 2<CheckCircle2 size={16} /></button>
+    </div>
+  );
+}
+
+function renderGrowthPlan({ courseState, updateModuleState, onComplete }) {
+  return (
+    <div className="space-y-8">
+      <section className="rounded-[30px] border border-slate-200 bg-white p-6">
+        <div className="section-tag">Next Growth Plan</div>
+        <textarea
+          rows={10}
+          value={courseState.module5.nextGrowthPlan}
+          onChange={(event) =>
+            updateModuleState("module5", (module) => ({ ...module, nextGrowthPlan: event.target.value }))
+          }
+          className="field-input min-h-[260px] resize-y"
+          placeholder="แนวทางต่อยอดในรอบถัดไป"
+        />
+      </section>
+      <button type="button" onClick={onComplete} className="primary-button">บันทึก Mission 3<CheckCircle2 size={16} /></button>
+    </div>
+  );
+}
+
+function renderPlatformSurvey({ courseState, updateModuleState, onComplete }) {
+  return (
+    <div className="space-y-8">
+      <div className="grid gap-5 lg:grid-cols-3">
+        <RatingCard title="ความพึงพอใจโดยรวม" description="แพลตฟอร์มนี้ตอบโจทย์การเรียนรู้ของคุณมากแค่ไหน" value={courseState.survey.satisfaction} onChange={(value) => updateModuleState("survey", (module) => ({ ...module, satisfaction: value }))} />
+        <RatingCard title="ความง่ายในการใช้งาน" description="การนำทางและกรอกข้อมูลใช้งานได้ลื่นไหลเพียงใด" value={courseState.survey.easeOfUse} onChange={(value) => updateModuleState("survey", (module) => ({ ...module, easeOfUse: value }))} />
+        <RatingCard title="ประโยชน์ของ AI Mentor" description="คำแนะนำระหว่างทางช่วยให้คิดต่อและทำงานได้จริงแค่ไหน" value={courseState.survey.aiHelpfulness} onChange={(value) => updateModuleState("survey", (module) => ({ ...module, aiHelpfulness: value }))} />
+      </div>
+
+      <section className="rounded-[30px] border border-slate-200 bg-white p-6">
+        <textarea
+          rows={8}
+          value={courseState.survey.comments}
+          onChange={(event) =>
+            updateModuleState("survey", (module) => ({ ...module, comments: event.target.value }))
+          }
+          className="field-input min-h-[220px] resize-y"
+          placeholder="ความคิดเห็นเพิ่มเติม"
+        />
+      </section>
+
+      <button type="button" onClick={onComplete} className="primary-button">ส่งแบบประเมิน<CheckCircle2 size={16} /></button>
     </div>
   );
 }

@@ -51,10 +51,9 @@ export default function CourseGuard({ children, courseId }) {
         <div className="dark-panel flex max-w-md items-center gap-4 p-5">
           <Loader2 size={24} className="animate-spin text-amber-200" />
           <div>
-            <p className="font-semibold text-white">Checking access</p>
+            <p className="font-semibold text-white">กำลังตรวจสอบสิทธิ์เข้าเรียน</p>
             <p className="mt-1 text-sm text-slate-300">
-              We are confirming that this learning room is unlocked for your
-              account.
+              ระบบกำลังยืนยันว่าห้องเรียนรู้นี้ถูกปลดล็อกสำหรับบัญชีของคุณแล้ว
             </p>
           </div>
         </div>
@@ -70,20 +69,19 @@ export default function CourseGuard({ children, courseId }) {
             <Lock size={36} />
           </div>
           <p className="mt-6 text-[11px] uppercase tracking-[0.28em] text-red-200">
-            Access required
+            ต้องมีสิทธิ์เข้าใช้งาน
           </p>
           <h2 className="mt-3 font-display text-4xl font-semibold tracking-[-0.08em] text-white">
-            This room is not unlocked yet.
+            ห้องนี้ยังไม่ถูกปลดล็อกสำหรับคุณ
           </h2>
           <p className="mt-4 text-base leading-7 text-slate-300">
-            Return to the dashboard, enroll into this pathway first, and then
-            come back once access has been granted.
+            กรุณากลับไปที่แดชบอร์ด ลงทะเบียนคอร์สนี้ก่อน แล้วจึงกลับมาเข้าใช้งานอีกครั้ง
           </p>
           <Link
             to="/dashboard"
             className="secondary-button mt-8 border-white/10 bg-white/5 text-white hover:bg-white/10"
           >
-            Return to dashboard
+            กลับไปแดชบอร์ด
           </Link>
         </section>
       </div>
