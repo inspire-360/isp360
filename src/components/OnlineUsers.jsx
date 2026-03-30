@@ -9,13 +9,17 @@ import {
 import { Circle, Users } from "lucide-react";
 import { db } from "../lib/firebase";
 import { getRoleLabel } from "../data/profileOptions";
+import { formatLastSeenLabel, isUserCurrentlyOnline } from "../lib/presence";
 
 function getPresenceMeta(user) {
   if (user.isOnline) {
     return { label: "กำลังใช้งาน", tone: "text-emerald-300" };
   }
 
-  return { label: "เพิ่งใช้งานล่าสุด", tone: "text-slate-400" };
+  return {
+    label: formatLastSeenLabel(user.lastSeen),
+    tone: "text-slate-400",
+  };
 }
 
 export default function OnlineUsers() {
@@ -31,15 +35,11 @@ export default function OnlineUsers() {
     const unsubscribe = onSnapshot(usersQuery, (snapshot) => {
       const nextUsers = snapshot.docs.map((docSnapshot) => {
         const data = docSnapshot.data();
-        const lastSeenDate = data.lastSeen?.toDate();
-        const diffMinutes = lastSeenDate
-          ? (Date.now() - lastSeenDate.getTime()) / 1000 / 60
-          : 999;
 
         return {
           id: docSnapshot.id,
           ...data,
-          isOnline: diffMinutes < 3,
+          isOnline: isUserCurrentlyOnline(data),
         };
       });
 
@@ -74,7 +74,7 @@ export default function OnlineUsers() {
       <div className="mt-6 space-y-3">
         {users.length === 0 ? (
           <div className="rounded-[24px] border border-white/10 bg-white/5 p-4 text-sm text-slate-300">
-            สถานะผู้ใช้งานจะปรากฏที่นี่เมื่อเริ่มมีการซิงก์ session เข้าระบบ
+            สถานะผู้ใช้งานจะปรากฏที่นี่เมื่อระบบเริ่มซิงก์การเข้าใช้งานแล้ว
           </div>
         ) : (
           users.map((user) => {

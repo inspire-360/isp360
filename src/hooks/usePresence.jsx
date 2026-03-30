@@ -1,37 +1,72 @@
-import { useEffect } from 'react';
-import { db } from '../lib/firebase';
-import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
-import { useAuth } from '../contexts/AuthContext';
+import { useEffect } from "react";
+import { doc, serverTimestamp, setDoc } from "firebase/firestore";
+import { useAuth } from "../contexts/AuthContext";
+import { db } from "../lib/firebase";
+
+export async function writePresence(userId, isOnline) {
+  if (!userId) {
+    return;
+  }
+
+  await setDoc(
+    doc(db, "users", userId),
+    {
+      isOnline,
+      lastSeen: serverTimestamp(),
+    },
+    { merge: true },
+  );
+}
 
 export function usePresence() {
   const { currentUser } = useAuth();
 
   useEffect(() => {
-    if (!currentUser) return;
+    if (!currentUser) {
+      return undefined;
+    }
 
-    const userRef = doc(db, 'users', currentUser.uid);
+    const userId = currentUser.uid;
 
-    // 1. ฟังก์ชันอัปเดตเวลา
-    const updateStatus = async () => {
-      try {
-        await updateDoc(userRef, {
-          isOnline: true,
-          lastSeen: serverTimestamp() // ใช้เวลาของ Server เพื่อความแม่นยำ
-        });
-      } catch (error) {
+    const markOnline = () =>
+      writePresence(userId, true).catch((error) => {
         console.error("Error updating presence:", error);
+      });
+
+    const markOffline = () =>
+      writePresence(userId, false).catch((error) => {
+        console.error("Error updating presence:", error);
+      });
+
+    const syncPresence = () => {
+      if (document.visibilityState === "visible") {
+        markOnline();
+        return;
       }
+
+      markOffline();
     };
 
-    // 2. ทำงานทันทีเมื่อเปิดหน้าเว็บ
-    updateStatus();
+    markOnline();
 
-    // 3. ตั้งเวลาให้ทำงานซ้ำทุกๆ 1 นาที (Heartbeat)
-    const interval = setInterval(updateStatus, 60000);
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        markOnline();
+      }
+    }, 45000);
 
-    // 4. Cleanup เมื่อปิดหน้าเว็บ (พยายามปรับสถานะเป็น offline - แต่ไม่การันตี 100% ใน web)
+    document.addEventListener("visibilitychange", syncPresence);
+    window.addEventListener("online", markOnline);
+    window.addEventListener("offline", markOffline);
+    window.addEventListener("pagehide", markOffline);
+
     return () => {
-      clearInterval(interval);
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", syncPresence);
+      window.removeEventListener("online", markOnline);
+      window.removeEventListener("offline", markOffline);
+      window.removeEventListener("pagehide", markOffline);
+      markOffline();
     };
   }, [currentUser]);
 }

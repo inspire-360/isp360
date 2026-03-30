@@ -11,6 +11,8 @@ const Register = lazy(() => import("../pages/Register"));
 const Dashboard = lazy(() => import("../pages/Dashboard"));
 const MyCourses = lazy(() => import("../pages/MyCourses"));
 const Profile = lazy(() => import("../pages/Profile"));
+const SosCenter = lazy(() => import("../pages/SosCenter"));
+const AdminDashboard = lazy(() => import("../pages/AdminDashboard"));
 const Construction = lazy(() => import("../pages/Construction"));
 const CourseRoom = lazy(() => import("../pages/CourseRoom"));
 
@@ -58,6 +60,24 @@ function PublicRoute({ children }) {
   return children;
 }
 
+function AdminRoute({ children }) {
+  const { currentUser, loading, userRole } = useAuth();
+
+  if (loading) {
+    return <RouteLoader />;
+  }
+
+  if (!currentUser) {
+    return <Navigate to="/login" />;
+  }
+
+  if (userRole !== "admin") {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return children;
+}
+
 export default function AppRoutes() {
   return (
     <Routes>
@@ -81,6 +101,11 @@ export default function AppRoutes() {
         <Route path="/dashboard" element={renderLazy(<Dashboard />)} />
         <Route path="/profile" element={renderLazy(<Profile />)} />
         <Route path="/courses" element={renderLazy(<MyCourses />)} />
+        <Route path="/sos" element={renderLazy(<SosCenter />)} />
+        <Route
+          path="/admin"
+          element={<AdminRoute>{renderLazy(<AdminDashboard />)}</AdminRoute>}
+        />
 
         <Route
           path="/course/teacher/*"
@@ -111,7 +136,9 @@ export default function AppRoutes() {
           path="/course/ai-era"
           element={
             <CourseGuard courseId="course-ai">
-              {renderLazy(<Construction message="InSPIRE 360 in AI Era กำลังอยู่ระหว่างพัฒนา" />)}
+              {renderLazy(
+                <Construction message="InSPIRE 360 in AI Era กำลังอยู่ระหว่างพัฒนา" />,
+              )}
             </CourseGuard>
           }
         />

@@ -5,8 +5,10 @@ import {
   BookOpen,
   ChevronRight,
   Home,
+  LifeBuoy,
   LogOut,
   Menu,
+  ShieldCheck,
   User,
   X,
 } from "lucide-react";
@@ -14,30 +16,9 @@ import { doc, onSnapshot } from "firebase/firestore";
 import { auth, db } from "../lib/firebase";
 import { useAuth } from "../contexts/AuthContext";
 import { useLine } from "../contexts/LineContext";
-import { usePresence } from "../hooks/usePresence";
+import { usePresence, writePresence } from "../hooks/usePresence";
 import { getRoleLabel } from "../data/profileOptions";
 import BrandMark from "./BrandMark";
-
-const NAV_ITEMS = [
-  {
-    icon: Home,
-    label: "แดชบอร์ด",
-    path: "/dashboard",
-    description: "ภาพรวม สิทธิ์เข้าใช้ และการใช้งานล่าสุด",
-  },
-  {
-    icon: BookOpen,
-    label: "คอร์สของฉัน",
-    path: "/courses",
-    description: "เส้นทางการเรียนรู้ที่คุณลงทะเบียนแล้ว",
-  },
-  {
-    icon: User,
-    label: "โปรไฟล์",
-    path: "/profile",
-    description: "ข้อมูลส่วนตัวและการตั้งค่าบัญชี",
-  },
-];
 
 const PAGE_COPY = [
   {
@@ -54,6 +35,16 @@ const PAGE_COPY = [
     match: (pathname) => pathname.startsWith("/profile"),
     title: "ตั้งค่าโปรไฟล์",
     description: "อัปเดตข้อมูลส่วนตัว สถานศึกษา และรายละเอียดบัญชีให้เป็นปัจจุบัน",
+  },
+  {
+    match: (pathname) => pathname.startsWith("/sos"),
+    title: "ศูนย์รับเรื่อง SOS",
+    description: "แจ้งปัญหา ขอความช่วยเหลือ และติดตามสถานะเรื่องตามระดับความเร่งด่วน",
+  },
+  {
+    match: (pathname) => pathname.startsWith("/admin"),
+    title: "แผงควบคุมผู้ดูแลระบบ",
+    description: "ภาพรวมผู้ใช้ คำตอบจากแต่ละโมดูล สถานะเรียน และคิว SOS สำหรับทีมดูแล",
   },
 ];
 
@@ -136,9 +127,50 @@ export default function Layout() {
     [userData.name, userData.photoURL],
   );
 
+  const navItems = useMemo(() => {
+    const items = [
+      {
+        icon: Home,
+        label: "แดชบอร์ด",
+        path: "/dashboard",
+        description: "ภาพรวม สิทธิ์เข้าใช้ และการใช้งานล่าสุด",
+      },
+      {
+        icon: BookOpen,
+        label: "คอร์สของฉัน",
+        path: "/courses",
+        description: "เส้นทางการเรียนรู้ที่คุณลงทะเบียนแล้ว",
+      },
+      {
+        icon: LifeBuoy,
+        label: "SOS",
+        path: "/sos",
+        description: "แจ้งปัญหา ขอความช่วยเหลือ และติดตามสถานะเรื่อง",
+      },
+      {
+        icon: User,
+        label: "โปรไฟล์",
+        path: "/profile",
+        description: "ข้อมูลส่วนตัวและการตั้งค่าบัญชี",
+      },
+    ];
+
+    if (userData.role === "admin") {
+      items.splice(3, 0, {
+        icon: ShieldCheck,
+        label: "Admin",
+        path: "/admin",
+        description: "จัดการผู้ใช้ คอร์ส และคิว SOS",
+      });
+    }
+
+    return items;
+  }, [userData.role]);
+
   const handleLogout = async () => {
     try {
       sessionStorage.setItem("manualLogout", "true");
+      await writePresence(currentUser?.uid, false);
       logoutLine();
       await auth.signOut();
       navigate("/", { replace: true });
@@ -160,7 +192,7 @@ export default function Layout() {
             <div>
               <p className="font-semibold">กลับเข้าสู่โหมดใช้งานแล้ว</p>
               <p className="mt-1 text-xs leading-5 text-slate-300">
-                ยินดีต้อนรับกลับครับ ระบบกำลังอัปเดตสถานะการใช้งานของคุณอีกครั้ง
+                ระบบกำลังอัปเดตสถานะการใช้งานของคุณอีกครั้ง
               </p>
             </div>
           </div>
@@ -206,7 +238,7 @@ export default function Layout() {
           </div>
 
           <nav className="mt-5 flex-1 space-y-2 overflow-y-auto custom-scrollbar pr-1">
-            {NAV_ITEMS.map((item) => {
+            {navItems.map((item) => {
               const Icon = item.icon;
 
               return (

@@ -1,11 +1,13 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
+  AlertTriangle,
   ArrowRight,
   BookOpen,
   CheckCircle2,
   Clock,
   GraduationCap,
+  LifeBuoy,
   Loader2,
   Lock,
   Sparkles,
@@ -23,6 +25,7 @@ import OnlineUsers from "../components/OnlineUsers";
 import { useAuth } from "../contexts/AuthContext";
 import { db } from "../lib/firebase";
 import { courseCatalog, operatorNotes } from "../data/courseCatalog";
+import { createEnrollmentPayload, getPendingEnrollmentStorageKey } from "../lib/enrollment";
 import { getRoleLabel } from "../data/profileOptions";
 import { getIcon } from "../utils/iconHelper";
 
@@ -87,7 +90,7 @@ export default function Dashboard() {
 
   const systemStats = [
     {
-      label: "ผู้ใช้ในระบบ",
+      label: "ผู้ใช้งานในระบบ",
       value: totalUsers.toLocaleString(),
       icon: <Users size={18} />,
     },
@@ -140,23 +143,27 @@ export default function Dashboard() {
   };
 
   const processEnrollment = async (course, codeUsed) => {
+    if (!currentUser) {
+      return;
+    }
+
     setEnrollLoading(true);
 
     try {
-      await setDoc(doc(db, "users", currentUser.uid, "enrollments", course.id), {
-        enrolledAt: new Date(),
-        progress: 0,
-        status: "active",
-        lastAccess: new Date(),
-        accessCodeUsed: codeUsed,
+      const enrollmentRef = doc(db, "users", currentUser.uid, "enrollments", course.id);
+      sessionStorage.setItem(getPendingEnrollmentStorageKey(course.id), "pending");
+
+      await setDoc(enrollmentRef, createEnrollmentPayload(course, codeUsed), {
+        merge: true,
       });
 
       setEnrolledCourses((prev) =>
         prev.includes(course.id) ? prev : [...prev, course.id],
       );
-      navigate(course.path);
+      navigate(course.path, { state: { justEnrolledCourseId: course.id } });
     } catch (error) {
       console.error("Enrollment failed:", error);
+      sessionStorage.removeItem(getPendingEnrollmentStorageKey(course.id));
       setModalError("ไม่สามารถลงทะเบียนคอร์สได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง");
     } finally {
       setEnrollLoading(false);
@@ -383,6 +390,44 @@ export default function Dashboard() {
 
         <div className="space-y-6">
           <OnlineUsers />
+
+          <section className="surface-panel p-6">
+            <p className="text-[11px] uppercase tracking-[0.28em] text-slate-500">
+              ศูนย์ช่วยเหลือ
+            </p>
+            <h3 className="mt-3 font-display text-3xl font-semibold tracking-[-0.06em] text-slate-950">
+              SOS Support Center
+            </h3>
+            <p className="mt-3 text-sm leading-7 text-slate-500">
+              แจ้งปัญหา ขอความช่วยเหลือ หรือส่งเรื่องเร่งด่วนตามระดับสีได้จากพื้นที่เดียว
+            </p>
+            <div className="mt-6 grid gap-3">
+              <button
+                type="button"
+                onClick={() => navigate("/sos")}
+                className="inline-flex items-center justify-between rounded-[22px] border border-red-200 bg-red-50 px-4 py-4 text-left text-sm font-semibold text-red-700 transition hover:-translate-y-0.5"
+              >
+                <span className="inline-flex items-center gap-3">
+                  <LifeBuoy size={18} />
+                  เปิดศูนย์ SOS
+                </span>
+                <ArrowRight size={16} />
+              </button>
+              {userRole === "admin" && (
+                <button
+                  type="button"
+                  onClick={() => navigate("/admin")}
+                  className="inline-flex items-center justify-between rounded-[22px] border border-slate-200 bg-slate-50 px-4 py-4 text-left text-sm font-semibold text-slate-800 transition hover:-translate-y-0.5"
+                >
+                  <span className="inline-flex items-center gap-3">
+                    <AlertTriangle size={18} />
+                    เปิดแผงควบคุมผู้ดูแลระบบ
+                  </span>
+                  <ArrowRight size={16} />
+                </button>
+              )}
+            </div>
+          </section>
 
           <section className="surface-panel p-6">
             <p className="text-[11px] uppercase tracking-[0.28em] text-slate-500">
