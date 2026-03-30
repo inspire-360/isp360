@@ -89,7 +89,7 @@ export default function AdminDashboard() {
       const [usersSnapshot, enrollmentsSnapshot, sosSnapshot] = await Promise.all([
         getDocs(collection(db, "users")),
         getDocs(collectionGroup(db, "enrollments")),
-        getDocs(collection(db, "sosTickets")),
+        getDocs(collectionGroup(db, "sosTickets")),
       ]);
 
       const nextUsers = usersSnapshot.docs.map((docSnapshot) => ({
@@ -114,6 +114,7 @@ export default function AdminDashboard() {
       const nextTickets = sosSnapshot.docs
         .map((docSnapshot) => ({
           id: docSnapshot.id,
+          path: docSnapshot.ref.path,
           ...docSnapshot.data(),
         }))
         .sort((left, right) => {
@@ -183,15 +184,23 @@ export default function AdminDashboard() {
     return [
       { label: "ผู้ใช้งานทั้งหมด", value: users.length, icon: <Users size={18} /> },
       { label: "ออนไลน์ตอนนี้", value: onlineCount, icon: <ShieldCheck size={18} /> },
-      { label: "ครูใน InSPIRE 360", value: teacherSummaries.length, icon: <BookOpen size={18} /> },
-      { label: "คิว SOS ที่ยังเปิดอยู่", value: openSosCount, icon: <LifeBuoy size={18} /> },
+      {
+        label: "ครูใน InSPIRE 360",
+        value: teacherSummaries.length,
+        icon: <BookOpen size={18} />,
+      },
+      {
+        label: "คิว SOS ที่ยังเปิดอยู่",
+        value: openSosCount,
+        icon: <LifeBuoy size={18} />,
+      },
     ];
   }, [sosTickets, teacherSummaries.length, users]);
 
-  const handleTicketStatusChange = async (ticketId, nextStatus) => {
+  const handleTicketStatusChange = async (ticketPath, nextStatus) => {
     try {
       await setDoc(
-        doc(db, "sosTickets", ticketId),
+        doc(db, ticketPath),
         {
           status: nextStatus,
           updatedAt: serverTimestamp(),
@@ -202,7 +211,7 @@ export default function AdminDashboard() {
 
       setSosTickets((previous) =>
         previous.map((ticket) =>
-          ticket.id === ticketId ? { ...ticket, status: nextStatus } : ticket,
+          ticket.path === ticketPath ? { ...ticket, status: nextStatus } : ticket,
         ),
       );
     } catch (error) {
@@ -230,7 +239,8 @@ export default function AdminDashboard() {
               ศูนย์จัดการระบบผู้ดูแล
             </h2>
             <p className="mt-4 max-w-3xl text-base leading-7 text-slate-300">
-              พื้นที่นี้รวมข้อมูลผู้ใช้ คำตอบจากแต่ละโมดูลของ InSPIRE 360 for Teacher และคิว SOS เพื่อให้ทีมดูแลระบบตัดสินใจและตอบสนองได้เร็วขึ้น
+              พื้นที่นี้รวมข้อมูลผู้ใช้ คำตอบจากแต่ละโมดูลของ InSPIRE 360 for
+              Teacher และคิว SOS เพื่อให้ทีมดูแลตัดสินใจและตอบสนองได้เร็วขึ้น
             </p>
           </div>
 
@@ -290,53 +300,64 @@ export default function AdminDashboard() {
           />
         </div>
 
-        <div className="mt-6 grid gap-4 xl:grid-cols-2">
-          {filteredSummaries.map((summary) => (
-            <article
-              key={summary.id}
-              className="rounded-[28px] border border-slate-200 bg-slate-50/80 p-5"
-            >
-              <div className="flex flex-wrap items-center gap-3">
-                <Badge text={summary.name} className="border-slate-200 bg-white text-slate-700" />
-                <Badge
-                  text={getRoleLabel(summary.role)}
-                  className="border-sky-200 bg-sky-50 text-sky-700"
-                />
-                <Badge
-                  text={summary.isOnline ? "ออนไลน์" : formatLastSeenLabel(summary.lastSeen)}
-                  className={
-                    summary.isOnline
-                      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                      : "border-slate-200 bg-white text-slate-600"
-                  }
-                />
-              </div>
+        {filteredSummaries.length === 0 ? (
+          <div className="mt-6 rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-600">
+            ยังไม่พบข้อมูลคำตอบของผู้ใช้ตามคำค้นนี้
+          </div>
+        ) : (
+          <div className="mt-6 grid gap-4 xl:grid-cols-2">
+            {filteredSummaries.map((summary) => (
+              <article
+                key={summary.id}
+                className="rounded-[28px] border border-slate-200 bg-slate-50/80 p-5"
+              >
+                <div className="flex flex-wrap items-center gap-3">
+                  <Badge
+                    text={summary.name}
+                    className="border-slate-200 bg-white text-slate-700"
+                  />
+                  <Badge
+                    text={getRoleLabel(summary.role)}
+                    className="border-sky-200 bg-sky-50 text-sky-700"
+                  />
+                  <Badge
+                    text={
+                      summary.isOnline ? "ออนไลน์" : formatLastSeenLabel(summary.lastSeen)
+                    }
+                    className={
+                      summary.isOnline
+                        ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                        : "border-slate-200 bg-white text-slate-600"
+                    }
+                  />
+                </div>
 
-              <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                <MiniStat text={`ความคืบหน้า ${summary.progressPercent}%`} />
-                <MiniStat text={`โรงเรียน ${summary.school}`} />
-                <MiniStat text={`Badge ${summary.badges.length} รายการ`} />
-              </div>
+                <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                  <MiniStat text={`ความคืบหน้า ${summary.progressPercent}%`} />
+                  <MiniStat text={`โรงเรียน ${summary.school}`} />
+                  <MiniStat text={`Badge ${summary.badges.length} รายการ`} />
+                </div>
 
-              <div className="mt-4 space-y-3">
-                <AnswerBlock label="Module 1 ปัญหาแกนหลัก" value={summary.module1Problem} />
-                <AnswerBlock label="Module 1 ความต้องการจริง" value={summary.module1Need} />
-                <AnswerBlock label="Module 1 แนวทางแก้" value={summary.module1Solution} />
-                <AnswerBlock label="Module 2 Dream Lab" value={summary.module2Dream} />
-                <AnswerBlock label="Module 2 SMART Goal" value={summary.module2Goal} />
-                <AnswerBlock label="Module 3 PLC Topic" value={summary.module3Topic} />
-                <AnswerBlock label="Module 4 Innovation" value={summary.module4Innovation} />
-                <AnswerBlock label="Module 5 Next Growth Plan" value={summary.module5Growth} />
-              </div>
+                <div className="mt-4 space-y-3">
+                  <AnswerBlock label="Module 1 ปัญหาแกนหลัก" value={summary.module1Problem} />
+                  <AnswerBlock label="Module 1 ความต้องการจริง" value={summary.module1Need} />
+                  <AnswerBlock label="Module 1 แนวทางแก้" value={summary.module1Solution} />
+                  <AnswerBlock label="Module 2 Dream Lab" value={summary.module2Dream} />
+                  <AnswerBlock label="Module 2 SMART Goal" value={summary.module2Goal} />
+                  <AnswerBlock label="Module 3 PLC Topic" value={summary.module3Topic} />
+                  <AnswerBlock label="Module 4 Innovation" value={summary.module4Innovation} />
+                  <AnswerBlock label="Module 5 Next Growth Plan" value={summary.module5Growth} />
+                </div>
 
-              <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                <MiniStat text={`พึงพอใจ ${summary.satisfaction}/5`} />
-                <MiniStat text={`ใช้งานง่าย ${summary.easeOfUse}/5`} />
-                <MiniStat text={`AI ช่วยได้ ${summary.aiHelpfulness}/5`} />
-              </div>
-            </article>
-          ))}
-        </div>
+                <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                  <MiniStat text={`พึงพอใจ ${summary.satisfaction}/5`} />
+                  <MiniStat text={`ใช้งานง่าย ${summary.easeOfUse}/5`} />
+                  <MiniStat text={`AI ช่วยได้ ${summary.aiHelpfulness}/5`} />
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
       </section>
 
       <section className="surface-panel p-6">
@@ -366,7 +387,7 @@ export default function AdminDashboard() {
 
               return (
                 <article
-                  key={ticket.id}
+                  key={ticket.path}
                   className="rounded-[26px] border border-slate-200 bg-slate-50/80 p-5"
                 >
                   <div className="flex flex-wrap items-start justify-between gap-4">
@@ -407,7 +428,7 @@ export default function AdminDashboard() {
                         id={`status-${ticket.id}`}
                         value={ticket.status || "open"}
                         onChange={(event) =>
-                          handleTicketStatusChange(ticket.id, event.target.value)
+                          handleTicketStatusChange(ticket.path, event.target.value)
                         }
                         className="field-select"
                       >

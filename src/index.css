@@ -7,18 +7,19 @@
 @layer base {
   :root {
     color-scheme: light;
-    --app-bg: #07111d;
-    --app-bg-soft: #10203a;
-    --app-panel: rgba(8, 18, 32, 0.76);
-    --app-line: rgba(140, 159, 184, 0.22);
-    --app-text: #ecf4ff;
-    --app-muted: #8fa2bf;
-    --app-ink: #102238;
-    --app-ink-soft: #42546d;
-    --app-surface: rgba(255, 255, 255, 0.82);
+    --app-bg: #09182a;
+    --app-bg-soft: #13273f;
+    --app-panel: rgba(9, 21, 38, 0.8);
+    --app-line: rgba(129, 165, 205, 0.2);
+    --app-text: #eef6ff;
+    --app-muted: #90a7c4;
+    --app-ink: #17314a;
+    --app-ink-soft: #526881;
+    --app-surface: rgba(255, 255, 255, 0.9);
     --app-surface-strong: #ffffff;
-    --app-accent: #d8a35f;
-    --app-accent-soft: rgba(216, 163, 95, 0.18);
+    --app-accent: #2f7cf6;
+    --app-accent-soft: rgba(47, 124, 246, 0.16);
+    --app-highlight: #f3c35c;
   }
 
   * {
@@ -33,11 +34,14 @@
     min-height: 100vh;
     margin: 0;
     font-family: "Sarabun", sans-serif;
+    line-height: 1.65;
     color: var(--app-ink);
     background:
-      radial-gradient(circle at top left, rgba(41, 98, 255, 0.14), transparent 32%),
-      radial-gradient(circle at bottom right, rgba(216, 163, 95, 0.12), transparent 28%),
-      linear-gradient(180deg, #eff4fb 0%, #f7f9fc 45%, #eef2f7 100%);
+      radial-gradient(circle at top left, rgba(47, 124, 246, 0.14), transparent 32%),
+      radial-gradient(circle at bottom right, rgba(16, 185, 129, 0.12), transparent 28%),
+      linear-gradient(180deg, #eef5ff 0%, #f7fbff 45%, #edf6f3 100%);
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
   }
 
   body::before {
@@ -78,11 +82,11 @@
   h6,
   .font-display {
     font-family: "Prompt", sans-serif;
-    letter-spacing: -0.03em;
+    letter-spacing: -0.02em;
   }
 
   ::selection {
-    background: rgba(216, 163, 95, 0.28);
+    background: rgba(47, 124, 246, 0.24);
     color: #07111d;
   }
 
@@ -93,34 +97,36 @@
 
 @layer components {
   .surface-panel {
-    border: 1px solid rgba(255, 255, 255, 0.6);
-    border-radius: 28px;
-    background: rgba(255, 255, 255, 0.82);
+    border: 1px solid rgba(255, 255, 255, 0.72);
+    border-radius: 30px;
+    background: rgba(255, 255, 255, 0.9);
     backdrop-filter: blur(24px);
-    box-shadow: 0 30px 80px rgba(15, 23, 42, 0.08);
+    box-shadow: 0 24px 60px rgba(15, 23, 42, 0.08);
   }
 
   .dark-panel {
-    border: 1px solid rgba(71, 85, 105, 0.4);
-    border-radius: 28px;
-    background: rgba(2, 6, 23, 0.7);
+    border: 1px solid rgba(125, 211, 252, 0.14);
+    border-radius: 30px;
+    background:
+      linear-gradient(180deg, rgba(9, 21, 38, 0.92), rgba(9, 21, 38, 0.8)),
+      radial-gradient(circle at top right, rgba(47, 124, 246, 0.12), transparent 34%);
     color: #f8fafc;
     backdrop-filter: blur(24px);
-    box-shadow: 0 30px 80px rgba(2, 8, 23, 0.4);
+    box-shadow: 0 28px 70px rgba(2, 8, 23, 0.34);
   }
 
   .section-tag {
     display: inline-flex;
     align-items: center;
     gap: 0.5rem;
-    border: 1px solid rgba(252, 211, 77, 0.4);
+    border: 1px solid rgba(243, 195, 92, 0.42);
     border-radius: 9999px;
-    background: rgba(254, 243, 199, 0.7);
-    padding: 0.25rem 0.75rem;
-    color: #b45309;
+    background: rgba(255, 247, 220, 0.9);
+    padding: 0.3rem 0.8rem;
+    color: #a16207;
     font-size: 11px;
     font-weight: 600;
-    letter-spacing: 0.28em;
+    letter-spacing: 0.22em;
     text-transform: uppercase;
   }
 
@@ -132,9 +138,9 @@
     border: none;
     border-radius: 9999px;
     background: var(--app-accent);
-    padding: 0.75rem 1.25rem;
-    color: #0f172a;
-    font-size: 0.875rem;
+    padding: 0.9rem 1.35rem;
+    color: #ffffff;
+    font-size: 0.95rem;
     font-weight: 600;
     transition:
       transform 180ms ease,
@@ -144,12 +150,12 @@
 
   .primary-button:hover {
     transform: translateY(-2px);
-    background: #e4b57b;
+    background: #2569d8;
   }
 
   .primary-button:focus-visible {
     outline: none;
-    box-shadow: 0 0 0 4px rgba(216, 163, 95, 0.2);
+    box-shadow: 0 0 0 4px rgba(47, 124, 246, 0.2);
   }
 
   .secondary-button {
@@ -157,12 +163,12 @@
     align-items: center;
     justify-content: center;
     gap: 0.5rem;
-    border: 1px solid rgba(148, 163, 184, 0.7);
+    border: 1px solid rgba(148, 163, 184, 0.58);
     border-radius: 9999px;
-    background: rgba(255, 255, 255, 0.72);
-    padding: 0.75rem 1.25rem;
+    background: rgba(255, 255, 255, 0.82);
+    padding: 0.9rem 1.35rem;
     color: #334155;
-    font-size: 0.875rem;
+    font-size: 0.95rem;
     font-weight: 600;
     transition:
       transform 180ms ease,
@@ -184,20 +190,21 @@
 
   .field-label {
     display: block;
-    margin-bottom: 0.5rem;
-    color: #334155;
-    font-size: 0.875rem;
+    margin-bottom: 0.65rem;
+    color: #294057;
+    font-size: 0.92rem;
     font-weight: 600;
   }
 
   .field-input {
     width: 100%;
-    border: 1px solid rgba(226, 232, 240, 0.9);
-    border-radius: 1rem;
-    background: rgba(255, 255, 255, 0.9);
-    padding: 0.875rem 1rem;
+    border: 1px solid rgba(203, 213, 225, 0.96);
+    border-radius: 1.1rem;
+    background: rgba(255, 255, 255, 0.96);
+    padding: 1rem 1.1rem;
     color: #1e293b;
-    font-size: 0.875rem;
+    font-size: 0.96rem;
+    line-height: 1.6;
     outline: none;
     transition:
       border-color 180ms ease,
@@ -211,19 +218,20 @@
 
   .field-input:focus {
     border-color: var(--app-accent);
-    box-shadow: 0 0 0 4px rgba(216, 163, 95, 0.18);
+    box-shadow: 0 0 0 4px rgba(47, 124, 246, 0.16);
     background: #fff;
   }
 
   .field-select {
     width: 100%;
     appearance: none;
-    border: 1px solid rgba(226, 232, 240, 0.9);
-    border-radius: 1rem;
-    background-color: rgba(255, 255, 255, 0.9);
-    padding: 0.875rem 2.5rem 0.875rem 1rem;
+    border: 1px solid rgba(203, 213, 225, 0.96);
+    border-radius: 1.1rem;
+    background-color: rgba(255, 255, 255, 0.96);
+    padding: 1rem 2.7rem 1rem 1.1rem;
     color: #1e293b;
-    font-size: 0.875rem;
+    font-size: 0.96rem;
+    line-height: 1.6;
     outline: none;
     transition:
       border-color 180ms ease,
@@ -241,7 +249,7 @@
 
   .field-select:focus {
     border-color: var(--app-accent);
-    box-shadow: 0 0 0 4px rgba(216, 163, 95, 0.18);
+    box-shadow: 0 0 0 4px rgba(47, 124, 246, 0.16);
     background-color: #fff;
   }
 
@@ -251,7 +259,7 @@
 
   .page-wrap {
     width: 100%;
-    max-width: 80rem;
+    max-width: 84rem;
     margin-inline: auto;
   }
 

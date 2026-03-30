@@ -5,9 +5,7 @@ import {
   doc,
   getDoc,
   onSnapshot,
-  query,
   serverTimestamp,
-  where,
 } from "firebase/firestore";
 import {
   AlertTriangle,
@@ -53,6 +51,7 @@ export default function SosCenter() {
     async function loadProfile() {
       try {
         const profileSnapshot = await getDoc(doc(db, "users", currentUser.uid));
+
         if (!isMounted) {
           return;
         }
@@ -65,17 +64,14 @@ export default function SosCenter() {
 
     loadProfile();
 
-    const ticketQuery = query(
-      collection(db, "sosTickets"),
-      where("userId", "==", currentUser.uid),
-    );
-
+    const ticketRef = collection(db, "users", currentUser.uid, "sosTickets");
     const unsubscribe = onSnapshot(
-      ticketQuery,
+      ticketRef,
       (snapshot) => {
         const nextTickets = snapshot.docs
           .map((docSnapshot) => ({
             id: docSnapshot.id,
+            path: docSnapshot.ref.path,
             ...docSnapshot.data(),
           }))
           .sort((left, right) => {
@@ -126,7 +122,7 @@ export default function SosCenter() {
     try {
       const levelMeta = getSosLevelMeta(form.level);
 
-      await addDoc(collection(db, "sosTickets"), {
+      await addDoc(collection(db, "users", currentUser.uid, "sosTickets"), {
         level: levelMeta.value,
         levelLabel: levelMeta.label,
         levelPriority: levelMeta.priority,
@@ -146,7 +142,9 @@ export default function SosCenter() {
       });
 
       setForm(INITIAL_FORM);
-      setFeedback("ส่งเรื่อง SOS เรียบร้อยแล้ว ทีมงานจะดำเนินการตามระดับความเร่งด่วน");
+      setFeedback(
+        "ส่งเรื่อง SOS เรียบร้อยแล้ว ทีมงานจะดำเนินการตามระดับความเร่งด่วน",
+      );
     } catch (error) {
       console.error("Error creating SOS ticket:", error);
       setFeedback("ส่งเรื่องไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
@@ -165,7 +163,8 @@ export default function SosCenter() {
           SOS Support Center
         </h2>
         <p className="mt-4 max-w-3xl text-base leading-7 text-slate-300">
-          แจ้งปัญหา ขอความช่วยเหลือ หรือส่งเคสด่วนเข้าสู่ระบบตามระดับสี เพื่อให้ทีมดูแลเห็นความเร่งด่วนได้ชัดเจนและจัดลำดับการตอบสนองได้ทันที
+          แจ้งปัญหา ขอความช่วยเหลือ หรือส่งเคสด่วนเข้าสู่ระบบตามระดับสี
+          เพื่อให้ทีมดูแลเห็นความเร่งด่วนได้ชัดเจนและตอบสนองได้ทันที
         </p>
 
         <div className="mt-8 grid gap-4 sm:grid-cols-3">

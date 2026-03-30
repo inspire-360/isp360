@@ -48,6 +48,7 @@ export function usePresence() {
     };
 
     markOnline();
+    syncPresence();
 
     const intervalId = window.setInterval(() => {
       if (document.visibilityState === "visible") {
@@ -56,6 +57,8 @@ export function usePresence() {
     }, 45000);
 
     document.addEventListener("visibilitychange", syncPresence);
+    window.addEventListener("focus", markOnline);
+    window.addEventListener("blur", syncPresence);
     window.addEventListener("online", markOnline);
     window.addEventListener("offline", markOffline);
     window.addEventListener("pagehide", markOffline);
@@ -63,6 +66,8 @@ export function usePresence() {
     return () => {
       window.clearInterval(intervalId);
       document.removeEventListener("visibilitychange", syncPresence);
+      window.removeEventListener("focus", markOnline);
+      window.removeEventListener("blur", syncPresence);
       window.removeEventListener("online", markOnline);
       window.removeEventListener("offline", markOffline);
       window.removeEventListener("pagehide", markOffline);

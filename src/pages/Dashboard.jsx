@@ -18,7 +18,7 @@ import {
   collection,
   doc,
   getCountFromServer,
-  getDocs,
+  onSnapshot,
   setDoc,
 } from "firebase/firestore";
 import OnlineUsers from "../components/OnlineUsers";
@@ -48,6 +48,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     let isMounted = true;
+    let unsubscribeEnrollments = () => {};
 
     async function fetchData() {
       if (!currentUser) {
@@ -55,20 +56,33 @@ export default function Dashboard() {
       }
 
       try {
-        const [enrollmentSnapshot, usersSnapshot] = await Promise.all([
-          getDocs(collection(db, "users", currentUser.uid, "enrollments")),
-          getCountFromServer(collection(db, "users")),
-        ]);
+        unsubscribeEnrollments = onSnapshot(
+          collection(db, "users", currentUser.uid, "enrollments"),
+          (enrollmentSnapshot) => {
+            if (!isMounted) {
+              return;
+            }
+
+            setEnrolledCourses(enrollmentSnapshot.docs.map((docItem) => docItem.id));
+            setLoading(false);
+          },
+          (error) => {
+            console.error("Error subscribing enrollments:", error);
+            if (isMounted) {
+              setLoading(false);
+            }
+          },
+        );
+
+        const usersSnapshot = await getCountFromServer(collection(db, "users"));
 
         if (!isMounted) {
           return;
         }
 
-        setEnrolledCourses(enrollmentSnapshot.docs.map((docItem) => docItem.id));
         setTotalUsers(usersSnapshot.data().count);
       } catch (error) {
         console.error("Error fetching dashboard data:", error);
-      } finally {
         if (isMounted) {
           setLoading(false);
         }
@@ -79,6 +93,7 @@ export default function Dashboard() {
 
     return () => {
       isMounted = false;
+      unsubscribeEnrollments();
     };
   }, [currentUser]);
 

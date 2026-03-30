@@ -170,8 +170,16 @@ export default function Layout() {
   const handleLogout = async () => {
     try {
       sessionStorage.setItem("manualLogout", "true");
-      await writePresence(currentUser?.uid, false);
-      logoutLine();
+      try {
+        await writePresence(currentUser?.uid, false);
+      } catch (presenceError) {
+        console.warn("Presence update before logout failed:", presenceError);
+      }
+      try {
+        logoutLine();
+      } catch (lineError) {
+        console.warn("LINE logout failed:", lineError);
+      }
       await auth.signOut();
       navigate("/", { replace: true });
     } catch (error) {

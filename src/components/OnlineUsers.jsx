@@ -1,11 +1,5 @@
-import React, { useEffect, useMemo, useState } from "react";
-import {
-  collection,
-  limit,
-  onSnapshot,
-  orderBy,
-  query,
-} from "firebase/firestore";
+import React, { useEffect, useState } from "react";
+import { collection, onSnapshot } from "firebase/firestore";
 import { Circle, Users } from "lucide-react";
 import { db } from "../lib/firebase";
 import { getRoleLabel } from "../data/profileOptions";
@@ -24,16 +18,12 @@ function getPresenceMeta(user) {
 
 export default function OnlineUsers() {
   const [users, setUsers] = useState([]);
+  const [onlineCount, setOnlineCount] = useState(0);
+  const [totalCount, setTotalCount] = useState(0);
 
   useEffect(() => {
-    const usersQuery = query(
-      collection(db, "users"),
-      orderBy("lastSeen", "desc"),
-      limit(12),
-    );
-
-    const unsubscribe = onSnapshot(usersQuery, (snapshot) => {
-      const nextUsers = snapshot.docs.map((docSnapshot) => {
+    const unsubscribe = onSnapshot(collection(db, "users"), (snapshot) => {
+      const allUsers = snapshot.docs.map((docSnapshot) => {
         const data = docSnapshot.data();
 
         return {
@@ -43,37 +33,46 @@ export default function OnlineUsers() {
         };
       });
 
+      const nextUsers = [...allUsers]
+        .sort((left, right) => {
+          if (left.isOnline !== right.isOnline) {
+            return left.isOnline ? -1 : 1;
+          }
+
+          const leftTime = left.lastSeen?.toMillis?.() || 0;
+          const rightTime = right.lastSeen?.toMillis?.() || 0;
+          return rightTime - leftTime;
+        })
+        .slice(0, 12);
+
+      setOnlineCount(allUsers.filter((user) => user.isOnline).length);
+      setTotalCount(allUsers.length);
       setUsers(nextUsers);
     });
 
     return () => unsubscribe();
   }, []);
 
-  const onlineCount = useMemo(
-    () => users.filter((user) => user.isOnline).length,
-    [users],
-  );
-
   return (
-    <section className="dark-panel overflow-hidden p-5">
+    <section className="dark-panel overflow-hidden p-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-[11px] uppercase tracking-[0.28em] text-slate-400">
+          <p className="text-[11px] uppercase tracking-[0.22em] text-slate-400">
             สถานะผู้ใช้งาน
           </p>
-          <h3 className="mt-2 flex items-center gap-2 font-display text-2xl font-semibold tracking-[-0.05em] text-white">
-            <Users size={20} className="text-amber-200" />
+          <h3 className="mt-2 flex items-center gap-2 font-display text-2xl font-semibold text-white">
+            <Users size={20} className="text-sky-200" />
             ผู้ใช้งานในระบบ
           </h3>
         </div>
         <div className="rounded-full border border-emerald-300/15 bg-emerald-300/10 px-3 py-1 text-xs font-medium text-emerald-200">
-          ออนไลน์ {onlineCount} คน
+          ออนไลน์ {onlineCount} / {totalCount} คน
         </div>
       </div>
 
       <div className="mt-6 space-y-3">
         {users.length === 0 ? (
-          <div className="rounded-[24px] border border-white/10 bg-white/5 p-4 text-sm text-slate-300">
+          <div className="rounded-[24px] border border-white/10 bg-white/5 p-4 text-sm leading-7 text-slate-300">
             สถานะผู้ใช้งานจะปรากฏที่นี่เมื่อระบบเริ่มซิงก์การเข้าใช้งานแล้ว
           </div>
         ) : (
@@ -82,7 +81,7 @@ export default function OnlineUsers() {
             const avatarUrl =
               user.photoURL ||
               `https://ui-avatars.com/api/?name=${encodeURIComponent(
-                user.name || "User",
+                user.name || user.email || "User",
               )}&background=0f172a&color=fff`;
 
             return (
@@ -107,7 +106,7 @@ export default function OnlineUsers() {
 
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold text-white">
-                    {user.name || "ผู้ใช้ไม่ระบุชื่อ"}
+                    {user.name || user.email || "ผู้ใช้ไม่ระบุชื่อ"}
                   </p>
                   <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
                     <span className="text-slate-400">

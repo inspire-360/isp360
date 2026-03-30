@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { updateProfile } from "firebase/auth";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
 import {
   ArrowLeft,
   Briefcase,
@@ -15,6 +15,27 @@ import { useNavigate } from "react-router-dom";
 import { auth, db } from "../lib/firebase";
 import { useAuth } from "../contexts/AuthContext";
 import { getRoleLabel, prefixOptions } from "../data/profileOptions";
+
+function buildAvatar(firstName, lastName) {
+  return `https://ui-avatars.com/api/?name=${encodeURIComponent(
+    `${firstName || "User"} ${lastName || ""}`.trim(),
+  )}&background=0f172a&color=fff`;
+}
+
+function splitName(fullName = "") {
+  const trimmed = fullName.trim();
+
+  if (!trimmed) {
+    return { firstName: "", lastName: "" };
+  }
+
+  const parts = trimmed.split(/\s+/);
+
+  return {
+    firstName: parts[0] || "",
+    lastName: parts.slice(1).join(" "),
+  };
+}
 
 export default function Profile() {
   const { currentUser } = useAuth();
@@ -49,12 +70,16 @@ export default function Profile() {
           return;
         }
 
+        const authName = splitName(currentUser.displayName || "");
+
         if (userSnapshot.exists()) {
           const data = userSnapshot.data();
+          const storedName = splitName(data.name || "");
+
           setFormData({
             prefix: data.prefix || "นาย",
-            firstName: data.firstName || "",
-            lastName: data.lastName || "",
+            firstName: data.firstName || storedName.firstName || authName.firstName || "",
+            lastName: data.lastName || storedName.lastName || authName.lastName || "",
             position: data.position || "ครู",
             school: data.school || "",
             email: data.email || currentUser.email || "",
@@ -64,17 +89,21 @@ export default function Profile() {
           return;
         }
 
-        const displayName = currentUser.displayName || "";
-        const names = displayName.split(" ");
-        setFormData((prev) => ({
-          ...prev,
-          firstName: names[0] || "",
-          lastName: names.slice(1).join(" ") || "",
+        setFormData((previous) => ({
+          ...previous,
+          firstName: authName.firstName || "",
+          lastName: authName.lastName || "",
           email: currentUser.email || "",
           photoURL: currentUser.photoURL || "",
         }));
       } catch (error) {
         console.error("Error fetching profile:", error);
+        if (isMounted) {
+          setMessage({
+            type: "error",
+            text: "ไม่สามารถโหลดข้อมูลโปรไฟล์ได้ในขณะนี้",
+          });
+        }
       }
     }
 
@@ -86,18 +115,14 @@ export default function Profile() {
   }, [currentUser]);
 
   const avatarUrl = useMemo(
-    () =>
-      formData.photoURL ||
-      `https://ui-avatars.com/api/?name=${encodeURIComponent(
-        `${formData.firstName || "User"} ${formData.lastName || ""}`.trim(),
-      )}&background=0f172a&color=fff`,
+    () => formData.photoURL || buildAvatar(formData.firstName, formData.lastName),
     [formData.firstName, formData.lastName, formData.photoURL],
   );
 
   const handleChange = (event) => {
     const { name, value } = event.target;
-    setFormData((prev) => ({
-      ...prev,
+    setFormData((previous) => ({
+      ...previous,
       [name]: value,
     }));
   };
@@ -116,34 +141,56 @@ export default function Profile() {
       return;
     }
 
+    if (!formData.firstName.trim() || !formData.lastName.trim()) {
+      setMessage({
+        type: "error",
+        text: "กรุณากรอกชื่อและนามสกุลให้ครบ",
+      });
+      setLoading(false);
+      return;
+    }
+
     try {
-      const fullName = `${formData.prefix}${formData.firstName} ${formData.lastName}`;
+      const nextPhotoURL =
+        formData.photoURL || buildAvatar(formData.firstName, formData.lastName);
+      const fullName = `${formData.prefix}${formData.firstName} ${formData.lastName}`.trim();
       const userRef = doc(db, "users", currentUser.uid);
 
       await setDoc(
         userRef,
         {
           prefix: formData.prefix,
-          firstName: formData.firstName,
-          lastName: formData.lastName,
+          firstName: formData.firstName.trim(),
+          lastName: formData.lastName.trim(),
           name: fullName,
-          position: formData.position,
-          school: formData.school,
-          email: formData.email,
-          updatedAt: new Date(),
+          position: formData.position.trim(),
+          school: formData.school.trim(),
+          email: formData.email || currentUser.email || "",
+          role: formData.role || "learner",
+          photoURL: nextPhotoURL,
+          updatedAt: serverTimestamp(),
         },
         { merge: true },
       );
 
       if (auth.currentUser) {
-        await updateProfile(auth.currentUser, {
-          displayName: fullName,
-        });
+        try {
+          await updateProfile(auth.currentUser, {
+            displayName: fullName,
+            photoURL: nextPhotoURL,
+          });
+        } catch (authError) {
+          console.error("Error syncing auth profile:", authError);
+        }
       }
 
+      setFormData((previous) => ({
+        ...previous,
+        photoURL: nextPhotoURL,
+      }));
       setMessage({
         type: "success",
-        text: "อัปเดตโปรไฟล์เรียบร้อยแล้ว",
+        text: "บันทึกข้อมูลโปรไฟล์เรียบร้อยแล้ว",
       });
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (error) {
@@ -158,17 +205,18 @@ export default function Profile() {
   };
 
   return (
-    <div className="page-wrap space-y-6">
+    <div className="page-wrap space-y-8">
       <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-[11px] uppercase tracking-[0.28em] text-slate-400">
+          <p className="text-[11px] uppercase tracking-[0.24em] text-slate-400">
             ตั้งค่าบัญชี
           </p>
-          <h2 className="mt-2 font-display text-4xl font-semibold tracking-[-0.08em] text-white">
+          <h2 className="mt-3 font-display text-4xl font-semibold text-white">
             อัปเดตโปรไฟล์ให้เป็นปัจจุบัน
           </h2>
-          <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-300">
-            หน้านี้ถูกออกแบบให้สอดคล้องกับส่วนอื่นของ workspace ทั้งการจัดกลุ่มข้อมูลที่ชัดขึ้น ลำดับสายตาที่ดีขึ้น และลดความรกในการแก้ไขข้อมูลทั่วไป
+          <p className="mt-4 max-w-2xl text-base leading-8 text-slate-300">
+            ปรับข้อมูลส่วนตัว บทบาทการทำงาน และบริบทสถานศึกษาให้ครบถ้วน
+            เพื่อให้ระบบแนะนำการเรียนรู้และการช่วยเหลือได้แม่นยำขึ้น
           </p>
         </div>
 
@@ -182,8 +230,8 @@ export default function Profile() {
         </button>
       </section>
 
-      <div className="grid gap-6 xl:grid-cols-[0.78fr_1.22fr]">
-        <section className="dark-panel p-6">
+      <div className="grid gap-6 xl:grid-cols-[0.8fr_1.2fr]">
+        <section className="dark-panel p-7">
           <div className="flex flex-col items-center text-center">
             <img
               src={avatarUrl}
@@ -191,39 +239,33 @@ export default function Profile() {
               referrerPolicy="no-referrer"
               className="h-28 w-28 rounded-[28px] object-cover ring-4 ring-white/10"
             />
-            <h3 className="mt-5 font-display text-3xl font-semibold tracking-[-0.06em] text-white">
+            <h3 className="mt-6 font-display text-3xl font-semibold text-white">
               {formData.firstName || "โปรไฟล์"} {formData.lastName || "ของคุณ"}
             </h3>
-            <p className="mt-2 text-sm text-slate-300">{formData.email || "ไม่มีอีเมล"}</p>
-            <span className="mt-4 rounded-full border border-amber-300/20 bg-amber-300/10 px-4 py-2 text-xs font-medium uppercase tracking-[0.24em] text-amber-200">
+            <p className="mt-3 text-sm leading-7 text-slate-300">
+              {formData.email || "ไม่พบอีเมลในระบบ"}
+            </p>
+            <span className="mt-5 rounded-full border border-sky-300/20 bg-sky-300/10 px-4 py-2 text-xs font-medium uppercase tracking-[0.2em] text-sky-200">
               {getRoleLabel(formData.role)}
             </span>
           </div>
 
-          <div className="mt-8 space-y-3">
-            <div className="rounded-[22px] border border-white/10 bg-white/5 px-4 py-4">
-              <p className="text-xs uppercase tracking-[0.24em] text-slate-400">
-                ตำแหน่งปัจจุบัน
-              </p>
-              <p className="mt-2 text-sm text-slate-200">
-                {formData.position || "ยังไม่ระบุ"}
-              </p>
-            </div>
-            <div className="rounded-[22px] border border-white/10 bg-white/5 px-4 py-4">
-              <p className="text-xs uppercase tracking-[0.24em] text-slate-400">
-                สถานศึกษา
-              </p>
-              <p className="mt-2 text-sm text-slate-200">
-                {formData.school || "ยังไม่ระบุ"}
-              </p>
-            </div>
+          <div className="mt-8 space-y-4">
+            <SummaryCard
+              label="ตำแหน่งปัจจุบัน"
+              value={formData.position || "ยังไม่ได้ระบุ"}
+            />
+            <SummaryCard
+              label="สถานศึกษา"
+              value={formData.school || "ยังไม่ได้ระบุ"}
+            />
           </div>
         </section>
 
-        <section className="surface-panel p-6 sm:p-8">
+        <section className="surface-panel p-7 sm:p-9">
           {message.text && (
             <div
-              className={`mb-6 rounded-[22px] px-4 py-3 text-sm ${
+              className={`mb-7 rounded-[22px] px-4 py-4 text-sm leading-7 ${
                 message.type === "success"
                   ? "border border-emerald-200 bg-emerald-50 text-emerald-700"
                   : "border border-red-200 bg-red-50 text-red-600"
@@ -233,19 +275,19 @@ export default function Profile() {
             </div>
           )}
 
-          <form onSubmit={handleUpdateProfile} className="space-y-8">
-            <section className="space-y-4">
+          <form onSubmit={handleUpdateProfile} className="space-y-9">
+            <section className="space-y-5">
               <div>
-                <p className="text-[11px] uppercase tracking-[0.28em] text-slate-500">
+                <p className="text-[11px] uppercase tracking-[0.24em] text-slate-500">
                   ข้อมูลตัวตน
                 </p>
-                <h3 className="mt-2 flex items-center gap-2 font-display text-2xl font-semibold tracking-[-0.05em] text-slate-950">
+                <h3 className="mt-2 flex items-center gap-2 font-display text-2xl font-semibold text-slate-950">
                   <User size={18} />
                   รายละเอียดส่วนบุคคล
                 </h3>
               </div>
 
-              <div className="grid gap-4 md:grid-cols-[0.9fr_1.15fr_1fr]">
+              <div className="grid gap-5 md:grid-cols-[0.9fr_1.15fr_1fr]">
                 <div>
                   <label htmlFor="prefix" className="field-label">
                     คำนำหน้า
@@ -265,64 +307,46 @@ export default function Profile() {
                   </select>
                 </div>
 
-                <div>
-                  <label htmlFor="firstName" className="field-label">
-                    ชื่อ
-                  </label>
-                  <input
-                    id="firstName"
-                    type="text"
-                    name="firstName"
-                    value={formData.firstName}
-                    onChange={handleChange}
-                    className="field-input"
-                    placeholder="ชื่อจริง"
-                  />
-                </div>
+                <TextField
+                  id="firstName"
+                  name="firstName"
+                  label="ชื่อ"
+                  value={formData.firstName}
+                  onChange={handleChange}
+                  placeholder="ชื่อจริง"
+                />
 
-                <div>
-                  <label htmlFor="lastName" className="field-label">
-                    นามสกุล
-                  </label>
-                  <input
-                    id="lastName"
-                    type="text"
-                    name="lastName"
-                    value={formData.lastName}
-                    onChange={handleChange}
-                    className="field-input"
-                    placeholder="นามสกุล"
-                  />
-                </div>
+                <TextField
+                  id="lastName"
+                  name="lastName"
+                  label="นามสกุล"
+                  value={formData.lastName}
+                  onChange={handleChange}
+                  placeholder="นามสกุล"
+                />
               </div>
             </section>
 
-            <section className="space-y-4">
+            <section className="space-y-5">
               <div>
-                <p className="text-[11px] uppercase tracking-[0.28em] text-slate-500">
+                <p className="text-[11px] uppercase tracking-[0.24em] text-slate-500">
                   บริบทการทำงาน
                 </p>
-                <h3 className="mt-2 flex items-center gap-2 font-display text-2xl font-semibold tracking-[-0.05em] text-slate-950">
+                <h3 className="mt-2 flex items-center gap-2 font-display text-2xl font-semibold text-slate-950">
                   <Briefcase size={18} />
                   ข้อมูลการทำงาน
                 </h3>
               </div>
 
-              <div className="grid gap-4 md:grid-cols-2">
-                <div>
-                  <label htmlFor="position" className="field-label">
-                    ตำแหน่ง
-                  </label>
-                  <input
-                    id="position"
-                    type="text"
-                    name="position"
-                    value={formData.position}
-                    onChange={handleChange}
-                    className="field-input"
-                    placeholder="เช่น ครูชำนาญการ"
-                  />
-                </div>
+              <div className="grid gap-5 md:grid-cols-2">
+                <TextField
+                  id="position"
+                  name="position"
+                  label="ตำแหน่ง"
+                  value={formData.position}
+                  onChange={handleChange}
+                  placeholder="เช่น ครูชำนาญการ"
+                />
 
                 <div>
                   <label htmlFor="school" className="field-label">
@@ -347,12 +371,12 @@ export default function Profile() {
               </div>
             </section>
 
-            <section className="space-y-4">
+            <section className="space-y-5">
               <div>
-                <p className="text-[11px] uppercase tracking-[0.28em] text-slate-500">
+                <p className="text-[11px] uppercase tracking-[0.24em] text-slate-500">
                   ข้อมูลการเข้าใช้งาน
                 </p>
-                <h3 className="mt-2 flex items-center gap-2 font-display text-2xl font-semibold tracking-[-0.05em] text-slate-950">
+                <h3 className="mt-2 flex items-center gap-2 font-display text-2xl font-semibold text-slate-950">
                   <Mail size={18} />
                   รายละเอียดบัญชี
                 </h3>
@@ -369,14 +393,18 @@ export default function Profile() {
                   disabled
                   className="field-input cursor-not-allowed bg-slate-100 text-slate-500"
                 />
-                <p className="mt-3 flex items-center gap-2 text-xs text-slate-400">
+                <p className="mt-3 flex items-center gap-2 text-xs leading-6 text-slate-400">
                   <ShieldCheck size={14} />
                   อีเมลถูกล็อกไว้เพื่อความปลอดภัยของบัญชี
                 </p>
               </div>
             </section>
 
-            <button type="submit" disabled={loading} className="primary-button w-full justify-center">
+            <button
+              type="submit"
+              disabled={loading}
+              className="primary-button w-full justify-center"
+            >
               {loading ? (
                 <>
                   <Save size={16} />
@@ -393,6 +421,34 @@ export default function Profile() {
           </form>
         </section>
       </div>
+    </div>
+  );
+}
+
+function TextField({ id, name, label, value, onChange, placeholder }) {
+  return (
+    <div>
+      <label htmlFor={id} className="field-label">
+        {label}
+      </label>
+      <input
+        id={id}
+        type="text"
+        name={name}
+        value={value}
+        onChange={onChange}
+        className="field-input"
+        placeholder={placeholder}
+      />
+    </div>
+  );
+}
+
+function SummaryCard({ label, value }) {
+  return (
+    <div className="rounded-[22px] border border-white/10 bg-white/5 px-4 py-4">
+      <p className="text-xs uppercase tracking-[0.18em] text-slate-400">{label}</p>
+      <p className="mt-2 text-sm leading-7 text-slate-200">{value}</p>
     </div>
   );
 }

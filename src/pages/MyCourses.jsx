@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowRight, Clock, Loader2, Search } from "lucide-react";
-import { collection, getDocs } from "firebase/firestore";
+import { collection, onSnapshot } from "firebase/firestore";
 import { useAuth } from "../contexts/AuthContext";
 import { db } from "../lib/firebase";
 import { courseCatalog } from "../data/courseCatalog";
@@ -22,41 +22,29 @@ export default function MyCourses() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    let isMounted = true;
+    if (!currentUser) {
+      return undefined;
+    }
 
-    async function fetchEnrollments() {
-      if (!currentUser) {
-        return;
-      }
-
-      try {
-        const querySnapshot = await getDocs(
-          collection(db, "users", currentUser.uid, "enrollments"),
-        );
-
-        if (!isMounted) {
-          return;
-        }
-
+    const unsubscribe = onSnapshot(
+      collection(db, "users", currentUser.uid, "enrollments"),
+      (querySnapshot) => {
         setEnrollments(
           querySnapshot.docs.map((docItem) => ({
             id: docItem.id,
             ...docItem.data(),
           })),
         );
-      } catch (error) {
+        setLoading(false);
+      },
+      (error) => {
         console.error("Error fetching enrollments:", error);
-      } finally {
-        if (isMounted) {
-          setLoading(false);
-        }
-      }
-    }
-
-    fetchEnrollments();
+        setLoading(false);
+      },
+    );
 
     return () => {
-      isMounted = false;
+      unsubscribe();
     };
   }, [currentUser]);
 

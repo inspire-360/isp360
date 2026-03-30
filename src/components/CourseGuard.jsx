@@ -9,13 +9,16 @@ import { getPendingEnrollmentStorageKey } from "../lib/enrollment";
 export default function CourseGuard({ children, courseId }) {
   const { currentUser } = useAuth();
   const [guardState, setGuardState] = useState("checking");
+  const pendingKey = courseId ? getPendingEnrollmentStorageKey(courseId) : "";
+  const hasPendingAccess = pendingKey
+    ? sessionStorage.getItem(pendingKey) === "pending"
+    : false;
 
   useEffect(() => {
     if (!currentUser || !courseId) {
       return undefined;
     }
 
-    const pendingKey = getPendingEnrollmentStorageKey(courseId);
     const enrollmentRef = doc(db, "users", currentUser.uid, "enrollments", courseId);
     let pendingTimeoutId;
 
@@ -35,7 +38,7 @@ export default function CourseGuard({ children, courseId }) {
           pendingTimeoutId = window.setTimeout(() => {
             setGuardState("denied");
             sessionStorage.removeItem(pendingKey);
-          }, 3500);
+          }, 8000);
           return;
         }
 
@@ -43,6 +46,12 @@ export default function CourseGuard({ children, courseId }) {
       },
       (error) => {
         console.error("Error checking enrollment:", error);
+
+        if (sessionStorage.getItem(pendingKey) === "pending") {
+          setGuardState("pending");
+          return;
+        }
+
         setGuardState("denied");
       },
     );
@@ -51,7 +60,7 @@ export default function CourseGuard({ children, courseId }) {
       window.clearTimeout(pendingTimeoutId);
       unsubscribe();
     };
-  }, [currentUser, courseId]);
+  }, [courseId, currentUser, pendingKey]);
 
   if (!currentUser || !courseId) {
     return (
@@ -80,6 +89,10 @@ export default function CourseGuard({ children, courseId }) {
     );
   }
 
+  if (hasPendingAccess) {
+    return children;
+  }
+
   if (guardState === "checking" || guardState === "pending") {
     const title =
       guardState === "pending"
@@ -87,13 +100,13 @@ export default function CourseGuard({ children, courseId }) {
         : "กำลังตรวจสอบสิทธิ์เข้าเรียน";
     const description =
       guardState === "pending"
-        ? "ระบบกำลังสร้างสิทธิ์เข้าเรียนและเปิดห้องเรียนให้คุณอัตโนมัติ"
+        ? "ระบบกำลังสร้างสถานะคอร์สและเปิดห้องเรียนให้คุณอัตโนมัติ"
         : "ระบบกำลังยืนยันว่าห้องเรียนนี้ถูกปลดล็อกสำหรับบัญชีของคุณแล้ว";
 
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
         <div className="dark-panel flex max-w-md items-center gap-4 p-5">
-          <Loader2 size={24} className="animate-spin text-amber-200" />
+          <Loader2 size={24} className="animate-spin text-sky-200" />
           <div>
             <p className="font-semibold text-white">{title}</p>
             <p className="mt-1 text-sm text-slate-300">{description}</p>
