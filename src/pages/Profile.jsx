@@ -17,6 +17,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { getRoleLabel, prefixOptions } from "../data/profileOptions";
 import { writePresence } from "../hooks/usePresence";
 import {
+  mergeProfileSources,
   readLocalProfileCache,
   writeLocalProfileCache,
 } from "../lib/profileCache";
@@ -43,7 +44,7 @@ function splitName(fullName = "") {
 }
 
 export default function Profile() {
-  const { currentUser } = useAuth();
+  const { currentUser, userRole } = useAuth();
   const navigate = useNavigate();
 
   const [loading, setLoading] = useState(false);
@@ -80,8 +81,8 @@ export default function Profile() {
 
         if (userSnapshot.exists()) {
           const data = userSnapshot.data();
-          const storedName = splitName(data.name || "");
-          const mergedData = { ...data, ...localProfile };
+          const mergedData = mergeProfileSources(data, localProfile);
+          const storedName = splitName(mergedData.name || data.name || "");
 
           setFormData({
             prefix: mergedData.prefix || "นาย",
@@ -98,33 +99,35 @@ export default function Profile() {
             position: mergedData.position || "ครู",
             school: mergedData.school || "",
             email: mergedData.email || currentUser.email || "",
-            role: mergedData.role || "learner",
+            role: data.role || userRole || mergedData.role || "learner",
             photoURL: mergedData.photoURL || currentUser.photoURL || "",
           });
           return;
         }
 
+        const mergedFallback = mergeProfileSources(null, localProfile);
         setFormData((previous) => ({
           ...previous,
-          prefix: localProfile?.prefix || previous.prefix,
-          firstName: localProfile?.firstName || authName.firstName || "",
-          lastName: localProfile?.lastName || authName.lastName || "",
-          position: localProfile?.position || previous.position,
-          school: localProfile?.school || "",
-          email: localProfile?.email || currentUser.email || "",
-          role: localProfile?.role || previous.role,
-          photoURL: localProfile?.photoURL || currentUser.photoURL || "",
+          prefix: mergedFallback.prefix || previous.prefix,
+          firstName: mergedFallback.firstName || authName.firstName || "",
+          lastName: mergedFallback.lastName || authName.lastName || "",
+          position: mergedFallback.position || previous.position,
+          school: mergedFallback.school || "",
+          email: mergedFallback.email || currentUser.email || "",
+          role: userRole || mergedFallback.role || previous.role,
+          photoURL: mergedFallback.photoURL || currentUser.photoURL || "",
         }));
       } catch (error) {
         console.error("Error fetching profile:", error);
         const localProfile = readLocalProfileCache(currentUser.uid);
 
         if (isMounted && localProfile) {
+          const mergedFallback = mergeProfileSources(null, localProfile);
           setFormData((previous) => ({
             ...previous,
-            ...localProfile,
-            email: localProfile.email || currentUser.email || "",
-            role: localProfile.role || previous.role,
+            ...mergedFallback,
+            email: mergedFallback.email || currentUser.email || "",
+            role: userRole || mergedFallback.role || previous.role,
           }));
         } else if (isMounted) {
           setMessage({
@@ -140,7 +143,7 @@ export default function Profile() {
     return () => {
       isMounted = false;
     };
-  }, [currentUser]);
+  }, [currentUser, userRole]);
 
   const avatarUrl = useMemo(
     () => formData.photoURL || buildAvatar(formData.firstName, formData.lastName),
@@ -183,6 +186,9 @@ export default function Profile() {
         formData.photoURL || buildAvatar(formData.firstName, formData.lastName);
       const fullName = `${formData.prefix}${formData.firstName} ${formData.lastName}`.trim();
       const userRef = doc(db, "users", currentUser.uid);
+      const userSnapshot = await getDoc(userRef);
+      const existingProfile = userSnapshot.exists() ? userSnapshot.data() : null;
+      const effectiveRole = existingProfile?.role || userRole || formData.role || "learner";
       const editableProfilePayload = {
         prefix: formData.prefix,
         firstName: formData.firstName.trim(),
@@ -193,6 +199,17 @@ export default function Profile() {
         photoURL: nextPhotoURL,
         updatedAt: serverTimestamp(),
       };
+      const createProfilePayload = {
+        uid: currentUser.uid,
+        email: currentUser.email || formData.email || "",
+        role: effectiveRole,
+        photoURL: nextPhotoURL,
+        badges: existingProfile?.badges || [],
+        pdpaAccepted: existingProfile?.pdpaAccepted ?? true,
+        pdpaAcceptedAt: existingProfile?.pdpaAcceptedAt || serverTimestamp(),
+        createdAt: existingProfile?.createdAt || serverTimestamp(),
+        ...editableProfilePayload,
+      };
       const localProfilePayload = {
         prefix: editableProfilePayload.prefix,
         firstName: editableProfilePayload.firstName,
@@ -202,13 +219,17 @@ export default function Profile() {
         school: editableProfilePayload.school,
         photoURL: editableProfilePayload.photoURL,
         email: formData.email || currentUser.email || "",
-        role: formData.role || "learner",
+        role: effectiveRole,
         updatedAt: new Date().toISOString(),
       };
       let firestoreSaved = false;
 
       try {
-        await setDoc(userRef, editableProfilePayload, { merge: true });
+        await setDoc(
+          userRef,
+          userSnapshot.exists() ? editableProfilePayload : createProfilePayload,
+          { merge: true },
+        );
         firestoreSaved = true;
       } catch (firestoreError) {
         const isPermissionError =
@@ -238,23 +259,24 @@ export default function Profile() {
             uid: currentUser.uid,
             name: fullName,
             photoURL: nextPhotoURL,
-            role: formData.role || "learner",
+            role: effectiveRole,
           },
           true,
-          formData.role || "learner",
+          effectiveRole,
         );
       } catch (presenceError) {
         console.error("Error syncing presence profile:", presenceError);
       }
       setFormData((previous) => ({
         ...previous,
+        role: effectiveRole,
         photoURL: nextPhotoURL,
       }));
       setMessage({
-        type: firestoreSaved ? "success" : "success",
+        type: "success",
         text: firestoreSaved
-          ? "บันทึกข้อมูลโปรไฟล์เรียบร้อยแล้ว"
-          : "อัปเดตชื่อบัญชีและบันทึกโปรไฟล์บนอุปกรณ์นี้แล้ว แม้ฐานข้อมูลจะยังไม่อนุญาตให้เขียนข้อมูลส่วนนี้",
+          ? "บันทึกข้อมูลโปรไฟล์ลง Firebase เรียบร้อยแล้ว"
+          : "อัปเดตชื่อบัญชีและบันทึกบนอุปกรณ์นี้แล้ว แต่ Firebase ยังไม่อนุญาตให้เขียนข้อมูลส่วนนี้ กรุณา deploy firestore.rules ชุดล่าสุดแล้วลองอีกครั้ง",
       });
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (error) {

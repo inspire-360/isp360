@@ -34,7 +34,9 @@
     min-height: 100vh;
     margin: 0;
     font-family: "Sarabun", sans-serif;
-    line-height: 1.78;
+    font-size: 16px;
+    line-height: 1.84;
+    letter-spacing: 0.002em;
     color: var(--app-ink);
     background:
       radial-gradient(circle at top left, rgba(47, 124, 246, 0.14), transparent 32%),
@@ -82,13 +84,13 @@
   h6,
   .font-display {
     font-family: "Prompt", sans-serif;
-    letter-spacing: -0.01em;
-    line-height: 1.14;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
   }
 
   p,
   li {
-    line-height: 1.82;
+    line-height: 1.9;
   }
 
   ::selection {
@@ -196,11 +198,11 @@
 
   .field-label {
     display: block;
-    margin-bottom: 0.65rem;
+    margin-bottom: 0.8rem;
     color: #294057;
-    font-size: 0.94rem;
+    font-size: 0.97rem;
     font-weight: 600;
-    line-height: 1.6;
+    line-height: 1.7;
   }
 
   .field-input {
@@ -208,10 +210,10 @@
     border: 1px solid rgba(203, 213, 225, 0.96);
     border-radius: 1.1rem;
     background: rgba(255, 255, 255, 0.96);
-    padding: 1.05rem 1.15rem;
+    padding: 1.12rem 1.2rem;
     color: #1e293b;
     font-size: 1rem;
-    line-height: 1.72;
+    line-height: 1.82;
     outline: none;
     transition:
       border-color 180ms ease,
@@ -235,10 +237,10 @@
     border: 1px solid rgba(203, 213, 225, 0.96);
     border-radius: 1.1rem;
     background-color: rgba(255, 255, 255, 0.96);
-    padding: 1.05rem 2.7rem 1.05rem 1.15rem;
+    padding: 1.12rem 2.9rem 1.12rem 1.2rem;
     color: #1e293b;
     font-size: 1rem;
-    line-height: 1.72;
+    line-height: 1.82;
     outline: none;
     transition:
       border-color 180ms ease,
@@ -266,7 +268,7 @@
 
   .page-wrap {
     width: 100%;
-    max-width: 84rem;
+    max-width: 86rem;
     margin-inline: auto;
   }
 
@@ -319,5 +321,32 @@
     animation-iteration-count: 1 !important;
     scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+@media (max-width: 640px) {
+  body {
+    line-height: 1.8;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6,
+  .font-display {
+    line-height: 1.24;
+  }
+
+  p,
+  li {
+    line-height: 1.84;
+  }
+
+  .field-input,
+  .field-select {
+    padding-top: 1rem;
+    padding-bottom: 1rem;
   }
 }

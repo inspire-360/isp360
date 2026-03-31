@@ -18,7 +18,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { useLine } from "../contexts/LineContext";
 import { usePresence, writePresence } from "../hooks/usePresence";
 import { getRoleLabel } from "../data/profileOptions";
-import { readLocalProfileCache } from "../lib/profileCache";
+import { mergeProfileSources, readLocalProfileCache } from "../lib/profileCache";
 import BrandMark from "./BrandMark";
 
 const PAGE_COPY = [
@@ -50,7 +50,7 @@ const PAGE_COPY = [
 ];
 
 export default function Layout() {
-  const { currentUser } = useAuth();
+  const { currentUser, userRole } = useAuth();
   const { logoutLine } = useLine();
   const location = useLocation();
   const navigate = useNavigate();
@@ -76,11 +76,11 @@ export default function Layout() {
 
     const applyUserProfile = (cloudProfile = null) => {
       const localProfile = readLocalProfileCache(currentUser.uid) || {};
-      const mergedProfile = { ...(cloudProfile || {}), ...localProfile };
+      const mergedProfile = mergeProfileSources(cloudProfile, localProfile);
 
       setUserData({
         name: mergedProfile.name || fallbackName,
-        role: mergedProfile.role || "learner",
+        role: userRole || mergedProfile.role || "learner",
         photoURL: mergedProfile.photoURL || currentUser.photoURL || "",
       });
     };
@@ -102,7 +102,7 @@ export default function Layout() {
     );
 
     return () => unsubscribe();
-  }, [currentUser]);
+  }, [currentUser, userRole]);
 
   useEffect(() => {
     let timeoutId;

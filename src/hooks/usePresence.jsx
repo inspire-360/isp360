@@ -82,39 +82,56 @@ export function usePresence(profile = null) {
         console.error("Error updating presence:", error);
       });
 
+    let lastHeartbeatAt = 0;
+    const HEARTBEAT_INTERVAL = 20000;
+
+    const heartbeat = () => {
+      const now = Date.now();
+      if (now - lastHeartbeatAt < HEARTBEAT_INTERVAL / 2) {
+        return;
+      }
+
+      lastHeartbeatAt = now;
+      markOnline();
+    };
+
     const syncPresence = () => {
       if (document.visibilityState === "visible") {
-        markOnline();
+        heartbeat();
         return;
       }
 
       markOffline();
     };
 
-    markOnline();
+    heartbeat();
     syncPresence();
 
     const intervalId = window.setInterval(() => {
       if (document.visibilityState === "visible") {
-        markOnline();
+        heartbeat();
       }
-    }, 45000);
+    }, HEARTBEAT_INTERVAL);
 
     document.addEventListener("visibilitychange", syncPresence);
-    window.addEventListener("focus", markOnline);
+    window.addEventListener("focus", heartbeat);
     window.addEventListener("blur", syncPresence);
-    window.addEventListener("online", markOnline);
+    window.addEventListener("online", heartbeat);
     window.addEventListener("offline", markOffline);
     window.addEventListener("pagehide", markOffline);
+    window.addEventListener("pointerdown", heartbeat);
+    window.addEventListener("keydown", heartbeat);
 
     return () => {
       window.clearInterval(intervalId);
       document.removeEventListener("visibilitychange", syncPresence);
-      window.removeEventListener("focus", markOnline);
+      window.removeEventListener("focus", heartbeat);
       window.removeEventListener("blur", syncPresence);
-      window.removeEventListener("online", markOnline);
+      window.removeEventListener("online", heartbeat);
       window.removeEventListener("offline", markOffline);
       window.removeEventListener("pagehide", markOffline);
+      window.removeEventListener("pointerdown", heartbeat);
+      window.removeEventListener("keydown", heartbeat);
       markOffline();
     };
   }, [currentUser, profile?.name, profile?.photoURL, profile?.role, userRole]);

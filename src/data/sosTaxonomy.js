@@ -1,261 +1,299 @@
 export const SOS_CATEGORIES = [
   {
-    id: "academic-affairs",
+    id: "academic",
     icon: "📚",
-    label: "หมวดหมู่การบริหารงานวิชาการ",
-    shortLabel: "งานวิชาการ",
-    description: "ปัญหาที่เกี่ยวข้องกับการจัดการเรียนการสอนโดยตรง",
+    label: "หมวดบริหารงานวิชาการ",
+    shortLabel: "วิชาการ",
+    description: "ปัญหาที่เกี่ยวข้องกับภาระการสอน หลักสูตร การประเมิน และสื่อการเรียนรู้",
     sensitive: false,
-    tags: [
+    groups: [
       {
         id: "teaching-load",
-        label: "ภาระงานสอน",
-        examples: ["จำนวนคาบสอนมากเกินไป", "สอนไม่ตรงเอก", "คาบสอนแทน"],
-      },
-      {
-        id: "curriculum-assessment",
-        label: "หลักสูตรและการประเมิน",
-        examples: [
-          "ความซับซ้อนของหลักสูตร",
-          "ปัญหาการทำ ปพ.",
-          "ระบบตัดเกรด",
-          "การประเมินผลตัวชี้วัด",
+        label: "1.1 ภาระงานสอน",
+        shortLabel: "ภาระงานสอน",
+        tags: [
+          { id: "overload", label: "สอนเกินเกณฑ์" },
+          { id: "off-major", label: "สอนไม่ตรงเอก" },
+          { id: "multi-grade", label: "สอนควบชั้น" },
+          { id: "substitute-class", label: "คาบสอนแทน" },
+          { id: "dense-schedule", label: "ตารางสอนแน่น" },
         ],
       },
       {
-        id: "teaching-media",
-        label: "สื่อและเทคโนโลยีการสอน",
-        examples: [
-          "อุปกรณ์ในห้องเรียนเสีย",
-          "อินเทอร์เน็ตไม่เสถียร",
-          "ขาดแคลนสื่อ",
+        id: "curriculum-evaluation",
+        label: "1.2 หลักสูตรและการประเมิน",
+        shortLabel: "หลักสูตร/ประเมิน",
+        tags: [
+          { id: "pp-workload", label: "ภาระงาน ปพ." },
+          { id: "special-needs", label: "เด็กพิเศษ (เรียนร่วม)" },
+          { id: "top-down-policy", label: "นโยบายเบื้องบน" },
         ],
       },
       {
-        id: "professional-growth",
-        label: "การพัฒนาตนเอง/วิทยฐานะ",
-        examples: [
-          "ขาดงบประมาณอบรม",
-          "เกณฑ์ประเมิน PA ยุ่งยาก",
-          "ภาระงานวิจัยในชั้นเรียน",
+        id: "media-it",
+        label: "1.3 สื่อและเทคโนโลยี",
+        shortLabel: "สื่อ/เทคโนโลยี",
+        tags: [
+          { id: "it-damaged", label: "อุปกรณ์ IT ชำรุด" },
+          { id: "internet-drop", label: "อินเทอร์เน็ตหลุด" },
+          { id: "material-shortage", label: "ขาดแคลนวัสดุฝึก" },
+        ],
+      },
+      {
+        id: "professional-advancement",
+        label: "1.4 วิทยฐานะ/PA",
+        shortLabel: "วิทยฐานะ/PA",
+        tags: [
+          { id: "pa-workload", label: "ภาระงาน PA" },
+          { id: "no-mentor", label: "ขาดพี่เลี้ยง (Mentor)" },
         ],
       },
     ],
   },
   {
-    id: "personnel-hr",
+    id: "hr-personnel",
     icon: "👥",
-    label: "หมวดหมู่การบริหารงานบุคคล",
-    shortLabel: "งานบุคคล",
-    description: "สิทธิ สวัสดิการ และภาระงานอื่น ๆ ของครู",
+    label: "หมวดบริหารงานบุคคล",
+    shortLabel: "บุคคล",
+    description: "ปัญหางานนอกเหนือการสอน สิทธิ สวัสดิการ และวัฒนธรรมองค์กร",
     sensitive: false,
-    tags: [
+    groups: [
       {
-        id: "special-duty",
-        label: "ภาระงานพิเศษ",
-        examples: [
-          "งานเอกสารนอกเหนือการสอน",
-          "งานพัสดุ/การเงินสำหรับครูผู้สอน",
-          "งานเข้าเวรยาม",
+        id: "non-teaching-duties",
+        label: "2.1 ภาระงานพิเศษนอกเหนือการสอน",
+        shortLabel: "งานพิเศษ",
+        tags: [
+          { id: "finance-procurement", label: "งานการเงิน/พัสดุ" },
+          { id: "admin-paperwork", label: "งานธุรการ" },
+          { id: "guard-duty", label: "เข้าเวรยาม" },
+          { id: "canteen-health", label: "งานอนามัย/โรงอาหาร" },
         ],
       },
       {
-        id: "rules-benefits",
-        label: "กฎระเบียบและสวัสดิการ",
-        examples: [
-          "การลางานยุ่งยาก",
-          "สวัสดิการบ้านพักครู",
-          "การเบิกจ่ายสวัสดิการล่าช้า",
+        id: "rights-benefits",
+        label: "2.2 สิทธิและสวัสดิการ",
+        shortLabel: "สิทธิ/สวัสดิการ",
+        tags: [
+          { id: "leave-approval", label: "อนุมัติวันลายาก" },
+          { id: "teacher-housing", label: "บ้านพักครู" },
+          { id: "contract-instability", label: "ความมั่นคง (ครูอัตราจ้าง)" },
         ],
       },
       {
-        id: "performance-review",
-        label: "การประเมินผลการปฏิบัติงาน",
-        examples: [
-          "ไม่เป็นธรรมในการเลื่อนขั้นเงินเดือน",
-          "เกณฑ์การประเมินไม่ชัดเจน",
-        ],
-      },
-      {
-        id: "work-relationship",
-        label: "สัมพันธภาพในองค์กร",
-        examples: [
-          "การสื่อสารระหว่างผู้บริหารกับครู",
-          "การประสานงานระหว่างหมวดวิชา/สายชั้น",
+        id: "workplace-culture",
+        label: "2.3 สัมพันธภาพและวัฒนธรรมองค์กร",
+        shortLabel: "วัฒนธรรมองค์กร",
+        tags: [
+          { id: "sotus", label: "ระบบอาวุโส (SOTUS)" },
+          { id: "factions", label: "แบ่งพรรคแบ่งพวก" },
+          { id: "unfair-evaluation", label: "การประเมินไม่เป็นธรรม" },
         ],
       },
     ],
   },
   {
-    id: "budget-finance",
+    id: "finance",
     icon: "💰",
-    label: "หมวดหมู่การบริหารงบประมาณ",
+    label: "หมวดบริหารงบประมาณ",
     shortLabel: "งบประมาณ",
-    description: "ปัญหาเรื่องงบประมาณที่กระทบต่อการทำงาน",
+    description: "ปัญหางบประมาณที่กระทบการทำงานประจำของครู",
     sensitive: false,
-    tags: [
+    groups: [
       {
-        id: "delay",
-        label: "ความล่าช้า",
-        examples: [
-          "การอนุมัติโครงการช้า",
-          "การเบิกจ่ายเงินสดล่วงหน้า",
-          "การคืนเงินสำรองจ่าย",
+        id: "budget-operations",
+        label: "3.1 การเงินและงบประมาณ",
+        shortLabel: "การเงิน",
+        tags: [
+          { id: "personal-advance", label: "สำรองจ่ายเงินส่วนตัว" },
+          { id: "fussy-reimbursement", label: "ระเบียบเบิกจ่ายจุกจิก" },
+          { id: "unfair-budget", label: "งบไม่เป็นธรรม" },
         ],
-      },
-      {
-        id: "budget-capacity",
-        label: "ความเพียงพอ",
-        examples: [
-          "งบประมาณแต่ละหมวดวิชาไม่พอ",
-          "ข้อจำกัดในการจัดซื้อวัสดุอุปกรณ์",
-        ],
-      },
-      {
-        id: "finance-paperwork",
-        label: "กระบวนการเอกสาร",
-        examples: ["เอกสารการเงิน/พัสดุซับซ้อน", "ภาระ e-GP"],
       },
     ],
   },
   {
-    id: "general-admin-facilities",
+    id: "facilities",
     icon: "🏫",
-    label: "หมวดหมู่การบริหารทั่วไปและอาคารสถานที่",
+    label: "หมวดอาคารสถานที่และสิ่งแวดล้อม",
     shortLabel: "อาคารสถานที่",
-    description: "สภาพแวดล้อมและโครงสร้างพื้นฐานของโรงเรียน",
+    description: "ปัญหาโครงสร้างพื้นฐาน สิ่งแวดล้อม และความปลอดภัยในโรงเรียน",
     sensitive: false,
-    tags: [
+    groups: [
       {
-        id: "environment-building",
-        label: "สภาพแวดล้อม/อาคาร",
-        examples: [
-          "ห้องเรียนทรุดโทรม",
-          "แสงสว่าง/พัดลม/แอร์ไม่เพียงพอ",
-          "ห้องน้ำไม่สะอาด",
+        id: "infrastructure",
+        label: "4.1 โครงสร้างพื้นฐาน",
+        shortLabel: "โครงสร้างพื้นฐาน",
+        tags: [
+          { id: "toilet", label: "ห้องน้ำ" },
+          { id: "classroom-condition", label: "สภาพห้องเรียน" },
+          { id: "teacher-room", label: "ห้องพักครู" },
         ],
       },
       {
         id: "safety",
-        label: "ความปลอดภัย",
-        examples: ["จุดเสี่ยงในโรงเรียน", "คนแปลกหน้าเข้าออก", "ระบบป้องกันอัคคีภัย"],
-      },
-      {
-        id: "utilities",
-        label: "สาธารณูปโภค",
-        examples: ["น้ำประปาไม่ไหล", "ไฟตก/ไฟดับบ่อย", "พื้นที่ทำงานไม่เพียงพอ"],
+        label: "4.2 ความปลอดภัย",
+        shortLabel: "ความปลอดภัย",
+        tags: [
+          { id: "danger-zone", label: "จุดเสี่ยงอันตราย" },
+          { id: "outside-person", label: "บุคคลภายนอก" },
+          { id: "animal-risk", label: "สัตว์รบกวน" },
+        ],
       },
     ],
   },
   {
     id: "student-affairs",
     icon: "👨‍👩‍👧‍👦",
-    label: "หมวดหมู่กิจการนักเรียนและผู้ปกครอง",
+    label: "หมวดกิจการนักเรียน",
     shortLabel: "กิจการนักเรียน",
-    description: "ปัญหาที่เกิดจากการดูแลนักเรียนและการมีส่วนร่วมของผู้ปกครอง",
+    description: "ปัญหาพฤติกรรม ระบบดูแลช่วยเหลือ และความสัมพันธ์กับผู้ปกครอง",
     sensitive: false,
-    tags: [
+    groups: [
       {
         id: "student-behavior",
-        label: "พฤติกรรมนักเรียน",
-        examples: ["นักเรียนหนีเรียน", "ทะเลาะวิวาท", "สารเสพติด", "Bullying"],
+        label: "5.1 พฤติกรรมนักเรียน",
+        shortLabel: "พฤติกรรมนักเรียน",
+        tags: [
+          { id: "drugs-vape", label: "สารเสพติด/บุหรี่ไฟฟ้า" },
+          { id: "fight-bully", label: "ทะเลาะวิวาท/บูลลี่" },
+          { id: "relationship-risk", label: "ปัญหาชู้สาว" },
+          { id: "absence-dropout", label: "ขาดเรียน/หนีเรียน" },
+        ],
       },
       {
-        id: "advisor-duty",
-        label: "งานครูที่ปรึกษา",
-        examples: ["ระบบดูแลช่วยเหลือนักเรียน", "การเยี่ยมบ้าน", "ภาระงานโฮมรูม"],
-      },
-      {
-        id: "parents",
-        label: "ผู้ปกครอง",
-        examples: [
-          "ขาดความร่วมมือจากผู้ปกครอง",
-          "ความขัดแย้งกับผู้ปกครอง",
-          "การร้องเรียนจากผู้ปกครอง",
+        id: "support-parents",
+        label: "5.2 ระบบดูแลช่วยเหลือและผู้ปกครอง",
+        shortLabel: "ดูแลช่วยเหลือ/ผู้ปกครอง",
+        tags: [
+          { id: "home-visit-cct", label: "ภาระเยี่ยมบ้าน/คัดกรอง" },
+          { id: "student-mental-health", label: "ปัญหาสุขภาพจิตเด็ก" },
+          { id: "parents-uncooperative", label: "ผู้ปกครองไม่ร่วมมือ" },
+          { id: "parents-harassment", label: "ผู้ปกครองคุกคาม" },
         ],
       },
     ],
   },
   {
-    id: "health-wellbeing",
+    id: "health",
     icon: "🩺",
-    label: "หมวดหมู่สุขภาพและสุขภาวะ",
-    shortLabel: "สุขภาวะ",
-    description: "คุณภาพชีวิต สุขภาพกาย และสุขภาพจิตของครู",
+    label: "หมวดสุขภาพ",
+    shortLabel: "สุขภาพ",
+    description: "ปัญหาสุขภาพกายและสุขภาพจิตที่เกิดจากบริบทการทำงานของครู",
     sensitive: false,
-    tags: [
+    groups: [
       {
         id: "physical-health",
-        label: "สุขภาพกาย",
-        examples: [
-          "ออฟฟิศซินโดรม",
-          "ปัญหาเส้นเสียง/ลำคอ",
-          "ปวดหลัง/ข้อจากการยืนนาน",
-          "ฝุ่น PM 2.5",
-          "อุบัติเหตุระหว่างปฏิบัติงาน",
+        label: "6.1 สุขภาพกาย",
+        shortLabel: "สุขภาพกาย",
+        tags: [
+          { id: "stomach-urinary", label: "กระเพาะ/ปัสสาวะอักเสบ" },
+          { id: "office-syndrome", label: "ออฟฟิศซินโดรม/ปวดหลัง" },
+          { id: "respiratory-voice", label: "โรคทางเดินหายใจ/เส้นเสียง" },
+          { id: "school-infection", label: "ติดโรคจากโรงเรียน" },
         ],
       },
       {
         id: "mental-health",
-        label: "สุขภาพจิต",
-        examples: [
-          "ภาวะหมดไฟ",
-          "ความเครียดจากการประเมิน",
-          "Work-Life Balance",
-          "ความวิตกกังวล/ซึมเศร้า",
+        label: "6.2 สุขภาพจิต",
+        shortLabel: "สุขภาพจิต",
+        tags: [
+          { id: "stress-depression", label: "เครียดสะสม/ซึมเศร้า" },
+          { id: "burnout", label: "หมดไฟ (Burnout)" },
+          { id: "no-disconnect", label: "งานล้ำเส้นเวลาส่วนตัว" },
         ],
       },
     ],
   },
   {
-    id: "confidential-sensitive",
+    id: "top-secret",
     icon: "🔒",
-    label: "หมวดหมู่ความลับและเรื่องละเอียดอ่อน",
-    shortLabel: "เรื่องลับ",
-    description: "ไม่แสดงคำตอบสาธารณะและเหมาะกับการปิดบังตัวตน",
+    label: "หมวดความลับสุดยอด / การทุจริต",
+    shortLabel: "ลับสุดยอด",
+    description: "ข้อมูลปิดที่อ่านได้เฉพาะผู้ดูแลหรือผู้ตรวจการเท่านั้น",
     sensitive: true,
-    tags: [
+    groups: [
       {
-        id: "misconduct",
-        label: "การทุจริต/ประพฤติมิชอบ",
-        examples: ["การเรียกรับผลประโยชน์", "การใช้งบประมาณผิดวัตถุประสงค์"],
-      },
-      {
-        id: "harassment",
-        label: "การคุกคาม/ล่วงละเมิด",
-        examples: [
-          "Sexual Harassment",
-          "Abuse of Power",
-          "Workplace Bullying",
+        id: "whistleblower",
+        label: "7.1 เรื่องลับและการทุจริต",
+        shortLabel: "Whistleblower",
+        tags: [
+          { id: "budget-fraud", label: "ทุจริตงบประมาณ" },
+          { id: "abuse-of-power", label: "ใช้อำนาจมิชอบ" },
+          { id: "sexual-harassment", label: "ล่วงละเมิดทางเพศ" },
+          { id: "workplace-bullying", label: "กลั่นแกล้งในที่ทำงาน" },
+          { id: "life-crisis", label: "วิกฤตชีวิตส่วนตัว" },
         ],
-      },
-      {
-        id: "serious-conflict",
-        label: "ความขัดแย้งรุนแรง",
-        examples: [
-          "ความขัดแย้งกับเพื่อนร่วมงาน",
-          "ความขัดแย้งกับผู้บังคับบัญชา",
-        ],
-      },
-      {
-        id: "personal-impact",
-        label: "ปัญหาส่วนตัวที่กระทบงาน",
-        examples: ["ปัญหาหนี้สินครู", "ปัญหาครอบครัว"],
       },
     ],
   },
 ];
 
+function getFallbackCategory() {
+  return SOS_CATEGORIES[0];
+}
+
+function getFallbackGroup(categoryId) {
+  return getSosCategoryMeta(categoryId).groups[0];
+}
+
+function findTagAcrossCategory(category, tagId) {
+  for (const group of category.groups) {
+    const tag = group.tags.find((item) => item.id === tagId);
+    if (tag) {
+      return { group, tag };
+    }
+  }
+
+  const fallbackGroup = category.groups[0];
+  return {
+    group: fallbackGroup,
+    tag: fallbackGroup?.tags[0] || { id: "", label: "" },
+  };
+}
+
 export function getSosCategoryMeta(categoryId) {
-  return SOS_CATEGORIES.find((category) => category.id === categoryId) ?? SOS_CATEGORIES[0];
+  return SOS_CATEGORIES.find((category) => category.id === categoryId) ?? getFallbackCategory();
 }
 
-export function getSosTagOptions(categoryId) {
-  return getSosCategoryMeta(categoryId).tags;
+export function getSosGroupOptions(categoryId) {
+  return getSosCategoryMeta(categoryId).groups || [];
 }
 
-export function getSosTagMeta(categoryId, tagId) {
-  return getSosTagOptions(categoryId).find((tag) => tag.id === tagId) ?? getSosTagOptions(categoryId)[0];
+export function getSosGroupMeta(categoryId, groupId) {
+  return getSosGroupOptions(categoryId).find((group) => group.id === groupId) ?? getFallbackGroup(categoryId);
+}
+
+export function getSosTagOptions(categoryId, groupId) {
+  return getSosGroupMeta(categoryId, groupId).tags || [];
+}
+
+export function getSosTagMeta(categoryId, groupId, tagId) {
+  const category = getSosCategoryMeta(categoryId);
+
+  if (groupId) {
+    return getSosTagOptions(categoryId, groupId).find((tag) => tag.id === tagId) ?? getSosTagOptions(categoryId, groupId)[0];
+  }
+
+  return findTagAcrossCategory(category, tagId).tag;
+}
+
+export function getSosTagContext(categoryId, groupId, tagId) {
+  const category = getSosCategoryMeta(categoryId);
+
+  if (groupId) {
+    return {
+      category,
+      group: getSosGroupMeta(categoryId, groupId),
+      tag: getSosTagMeta(categoryId, groupId, tagId),
+    };
+  }
+
+  const result = findTagAcrossCategory(category, tagId);
+  return {
+    category,
+    group: result.group,
+    tag: result.tag,
+  };
 }
 
 export function normalizeSosVisibility(categoryId, anonymous = false) {
@@ -290,26 +328,26 @@ export function buildSosCategorySummary(tickets) {
 }
 
 export function buildSosTagSummary(tickets) {
-  const tagCounter = new Map();
+  const counter = new Map();
 
   tickets.forEach((ticket) => {
     if (!ticket.categoryId || !ticket.tagId) {
       return;
     }
 
-    const category = getSosCategoryMeta(ticket.categoryId);
-    const tag = getSosTagMeta(ticket.categoryId, ticket.tagId);
-    const key = `${ticket.categoryId}:${ticket.tagId}`;
-    const previous = tagCounter.get(key);
+    const { category, group, tag } = getSosTagContext(ticket.categoryId, ticket.groupId, ticket.tagId);
+    const key = `${category.id}:${group.id}:${tag.id}`;
+    const previous = counter.get(key);
 
-    tagCounter.set(key, {
+    counter.set(key, {
       key,
       count: (previous?.count || 0) + 1,
       categoryLabel: category.shortLabel,
+      groupLabel: group.shortLabel || group.label,
       label: tag.label,
       sensitive: category.sensitive,
     });
   });
 
-  return [...tagCounter.values()].sort((left, right) => right.count - left.count);
+  return [...counter.values()].sort((left, right) => right.count - left.count);
 }

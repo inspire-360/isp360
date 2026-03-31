@@ -32,6 +32,7 @@ import {
   writeLocalEnrollment,
 } from "../lib/enrollment";
 import { getRoleLabel } from "../data/profileOptions";
+import { isUserCurrentlyOnline } from "../lib/presence";
 import { getIcon } from "../utils/iconHelper";
 
 export default function Dashboard() {
@@ -40,7 +41,7 @@ export default function Dashboard() {
 
   const [enrolledCourses, setEnrolledCourses] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [totalUsers, setTotalUsers] = useState(0);
+  const [onlineUsersCount, setOnlineUsersCount] = useState(0);
   const [showModal, setShowModal] = useState(false);
   const [selectedCourse, setSelectedCourse] = useState(null);
   const [accessCode, setAccessCode] = useState("");
@@ -102,7 +103,11 @@ export default function Dashboard() {
               return;
             }
 
-            setTotalUsers(presenceSnapshot.size);
+            setOnlineUsersCount(
+              presenceSnapshot.docs.filter((docSnapshot) =>
+                isUserCurrentlyOnline(docSnapshot.data()),
+              ).length,
+            );
           },
           (error) => {
             console.error("Error subscribing presence count:", error);
@@ -133,8 +138,8 @@ export default function Dashboard() {
 
   const systemStats = [
     {
-      label: "ผู้ใช้งานในระบบ",
-      value: totalUsers.toLocaleString(),
+      label: "ออนไลน์ตอนนี้",
+      value: onlineUsersCount.toLocaleString(),
       icon: <Users size={18} />,
     },
     {

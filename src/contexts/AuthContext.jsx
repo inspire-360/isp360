@@ -1,9 +1,23 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
-import { doc, onSnapshot } from "firebase/firestore";
+import { doc, onSnapshot, serverTimestamp, setDoc } from "firebase/firestore";
 import { auth, db } from "../lib/firebase";
 
 const AuthContext = createContext();
+
+function buildSeedProfile(user) {
+  return {
+    uid: user.uid,
+    email: user.email || "",
+    role: "learner",
+    name: user.displayName || user.email?.split("@")[0] || "ผู้ใช้",
+    photoURL: user.photoURL || "",
+    badges: [],
+    lastLogin: serverTimestamp(),
+    createdAt: serverTimestamp(),
+    pdpaAccepted: true,
+  };
+}
 
 export function AuthProvider({ children }) {
   const [currentUser, setCurrentUser] = useState(null);
@@ -18,15 +32,24 @@ export function AuthProvider({ children }) {
 
       if (user) {
         setCurrentUser(user);
+        const userRef = doc(db, "users", user.uid);
+
         unsubscribeUserDoc = onSnapshot(
-          doc(db, "users", user.uid),
-          (docSnapshot) => {
-            if (docSnapshot.exists()) {
-              setUserRole(docSnapshot.data().role || "learner");
-            } else {
+          userRef,
+          async (docSnapshot) => {
+            if (!docSnapshot.exists()) {
+              try {
+                await setDoc(userRef, buildSeedProfile(user), { merge: true });
+              } catch (seedError) {
+                console.error("Error seeding user profile:", seedError);
+              }
+
               setUserRole("learner");
+              setLoading(false);
+              return;
             }
 
+            setUserRole(docSnapshot.data().role || "learner");
             setLoading(false);
           },
           (error) => {

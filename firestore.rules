@@ -33,6 +33,7 @@ service cloud.firestore {
           "role",
           "photoURL",
           "createdAt",
+          "updatedAt",
           "pdpaAccepted",
           "pdpaAcceptedAt",
           "badges",
@@ -41,9 +42,36 @@ service cloud.firestore {
         ]);
     }
 
-    function ownerUserUpdateAllowed() {
-      return request.resource.data.role == resource.data.role
-        && request.resource.data.uid == resource.data.uid
+    function ownerUserUpdateAllowed(userId) {
+      return request.resource.data.uid == userId
+        && request.resource.data.keys().hasOnly([
+          "uid",
+          "prefix",
+          "firstName",
+          "lastName",
+          "name",
+          "position",
+          "school",
+          "email",
+          "role",
+          "photoURL",
+          "createdAt",
+          "updatedAt",
+          "pdpaAccepted",
+          "pdpaAcceptedAt",
+          "badges",
+          "lastLogin",
+          "lineUserId"
+        ])
+        && (
+          !resource.data.keys().hasAny(["role"])
+          ? request.resource.data.role == "learner"
+          : request.resource.data.role == resource.data.role
+        )
+        && (
+          !resource.data.keys().hasAny(["uid"])
+          || request.resource.data.uid == resource.data.uid
+        )
         && request.resource.data.diff(resource.data).changedKeys().hasOnly([
           "prefix",
           "firstName",
@@ -58,8 +86,14 @@ service cloud.firestore {
           "lineUserId",
           "pdpaAccepted",
           "pdpaAcceptedAt",
-          "badges"
-        ]);
+          "badges",
+          "uid",
+          "role"
+        ])
+        && (
+          !request.resource.data.diff(resource.data).changedKeys().hasAny(["role"])
+          || request.resource.data.role == "learner"
+        );
     }
 
     function publicPresenceWriteAllowed(userId) {
@@ -84,7 +118,7 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if isOwner(userId) || isAdmin();
       allow create: if (isOwner(userId) && ownerUserCreateAllowed(userId)) || isAdmin();
-      allow update: if (isOwner(userId) && ownerUserUpdateAllowed()) || isAdmin();
+      allow update: if (isOwner(userId) && ownerUserUpdateAllowed(userId)) || isAdmin();
       allow delete: if isAdmin();
 
       match /enrollments/{courseId} {
