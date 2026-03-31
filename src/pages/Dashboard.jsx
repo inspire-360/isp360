@@ -17,7 +17,6 @@ import {
 import {
   collection,
   doc,
-  getCountFromServer,
   onSnapshot,
   setDoc,
 } from "firebase/firestore";
@@ -55,6 +54,7 @@ export default function Dashboard() {
   useEffect(() => {
     let isMounted = true;
     let unsubscribeEnrollments = () => {};
+    let unsubscribePresence = () => {};
 
     async function fetchData() {
       if (!currentUser) {
@@ -95,13 +95,19 @@ export default function Dashboard() {
           },
         );
 
-        const usersSnapshot = await getCountFromServer(collection(db, "users"));
+        unsubscribePresence = onSnapshot(
+          collection(db, "presence"),
+          (presenceSnapshot) => {
+            if (!isMounted) {
+              return;
+            }
 
-        if (!isMounted) {
-          return;
-        }
-
-        setTotalUsers(usersSnapshot.data().count);
+            setTotalUsers(presenceSnapshot.size);
+          },
+          (error) => {
+            console.error("Error subscribing presence count:", error);
+          },
+        );
       } catch (error) {
         console.error("Error fetching dashboard data:", error);
         if (isMounted) {
@@ -115,6 +121,7 @@ export default function Dashboard() {
     return () => {
       isMounted = false;
       unsubscribeEnrollments();
+      unsubscribePresence();
     };
   }, [currentUser]);
 

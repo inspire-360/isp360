@@ -46,31 +46,67 @@ export const SOS_LEVELS = [
   },
 ];
 
-export const SOS_STATUS_OPTIONS = [
+export const SOS_APPROVAL_OPTIONS = [
   {
-    value: "open",
-    label: "รอรับเรื่อง",
-    badgeClass: "border-red-200 bg-red-50 text-red-700",
+    value: "pending",
+    label: "รออนุมัติ",
+    badgeClass: "border-amber-200 bg-amber-50 text-amber-700",
+  },
+  {
+    value: "approved",
+    label: "อนุมัติแล้ว",
+    badgeClass: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  },
+  {
+    value: "rejected",
+    label: "ต้องทบทวน/ไม่อนุมัติ",
+    badgeClass: "border-rose-200 bg-rose-50 text-rose-700",
+  },
+];
+
+export const SOS_WORKFLOW_STATUS_OPTIONS = [
+  {
+    value: "submitted",
+    label: "ส่งเรื่องแล้ว",
+    badgeClass: "border-slate-200 bg-slate-50 text-slate-700",
+  },
+  {
+    value: "in_review",
+    label: "กำลังตรวจสอบ",
+    badgeClass: "border-sky-200 bg-sky-50 text-sky-700",
   },
   {
     value: "in_progress",
     label: "กำลังดำเนินการ",
-    badgeClass: "border-sky-200 bg-sky-50 text-sky-700",
+    badgeClass: "border-indigo-200 bg-indigo-50 text-indigo-700",
   },
   {
     value: "resolved",
-    label: "ปิดเคสแล้ว",
+    label: "ปิดเรื่องแล้ว",
     badgeClass: "border-emerald-200 bg-emerald-50 text-emerald-700",
   },
 ];
+
+export const SOS_STATUS_OPTIONS = SOS_WORKFLOW_STATUS_OPTIONS;
 
 export function getSosLevelMeta(levelValue) {
   return SOS_LEVELS.find((level) => level.value === levelValue) ?? SOS_LEVELS[4];
 }
 
-export function getSosStatusMeta(statusValue) {
+export function getSosApprovalMeta(statusValue) {
   return (
-    SOS_STATUS_OPTIONS.find((status) => status.value === statusValue) ??
-    SOS_STATUS_OPTIONS[0]
+    SOS_APPROVAL_OPTIONS.find((status) => status.value === statusValue) ??
+    SOS_APPROVAL_OPTIONS[0]
   );
+}
+
+export function getSosWorkflowStatusMeta(statusValue) {
+  return (
+    SOS_WORKFLOW_STATUS_OPTIONS.find((status) => status.value === statusValue) ??
+    SOS_WORKFLOW_STATUS_OPTIONS[0]
+  );
+}
+
+export function getSosStatusMeta(statusValue) {
+  return getSosWorkflowStatusMeta(statusValue);
 }

@@ -1,0 +1,131 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function currentUserDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function isAdmin() {
+      return isSignedIn() && currentUserDoc().data.role == "admin";
+    }
+
+    function ownerUserCreateAllowed(userId) {
+      return request.resource.data.uid == userId
+        && request.resource.data.role == "learner"
+        && request.resource.data.keys().hasOnly([
+          "uid",
+          "prefix",
+          "firstName",
+          "lastName",
+          "name",
+          "position",
+          "school",
+          "email",
+          "role",
+          "photoURL",
+          "createdAt",
+          "pdpaAccepted",
+          "pdpaAcceptedAt",
+          "badges",
+          "lastLogin",
+          "lineUserId"
+        ]);
+    }
+
+    function ownerUserUpdateAllowed() {
+      return request.resource.data.role == resource.data.role
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.diff(resource.data).changedKeys().hasOnly([
+          "prefix",
+          "firstName",
+          "lastName",
+          "name",
+          "position",
+          "school",
+          "email",
+          "photoURL",
+          "updatedAt",
+          "lastLogin",
+          "lineUserId",
+          "pdpaAccepted",
+          "pdpaAcceptedAt",
+          "badges"
+        ]);
+    }
+
+    function publicPresenceWriteAllowed(userId) {
+      return request.resource.data.uid == userId
+        && request.resource.data.keys().hasOnly([
+          "uid",
+          "name",
+          "photoURL",
+          "role",
+          "isOnline",
+          "lastSeen"
+        ]);
+    }
+
+    function isReadablePublicSos() {
+      return isSignedIn()
+        && resource.data.approvalStatus == "approved"
+        && resource.data.visibility == "public"
+        && resource.data.isSensitive != true;
+    }
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if (isOwner(userId) && ownerUserCreateAllowed(userId)) || isAdmin();
+      allow update: if (isOwner(userId) && ownerUserUpdateAllowed()) || isAdmin();
+      allow delete: if isAdmin();
+
+      match /enrollments/{courseId} {
+        allow read, write: if isOwner(userId) || isAdmin();
+      }
+
+      match /sosTickets/{ticketId} {
+        allow create: if isOwner(userId)
+          && request.resource.data.userId == userId
+          && request.resource.data.keys().hasAll([
+            "userId",
+            "title",
+            "details",
+            "level",
+            "categoryId",
+            "tagId",
+            "approvalStatus",
+            "workflowStatus",
+            "visibility"
+          ]);
+
+        allow read: if isOwner(userId) || isAdmin() || isReadablePublicSos();
+
+        allow update: if isAdmin()
+          || (
+            isOwner(userId)
+            && request.resource.data.userId == resource.data.userId
+            && request.resource.data.approvalStatus == resource.data.approvalStatus
+            && request.resource.data.workflowStatus == resource.data.workflowStatus
+            && request.resource.data.visibility == resource.data.visibility
+            && request.resource.data.isSensitive == resource.data.isSensitive
+          );
+
+        allow delete: if isAdmin();
+      }
+    }
+
+    match /presence/{userId} {
+      allow read: if isSignedIn();
+      allow create, update: if (isOwner(userId) && publicPresenceWriteAllowed(userId)) || isAdmin();
+      allow delete: if isOwner(userId) || isAdmin();
+    }
+  }
+}

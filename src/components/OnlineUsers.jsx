@@ -22,7 +22,7 @@ export default function OnlineUsers() {
   const [totalCount, setTotalCount] = useState(0);
 
   useEffect(() => {
-    const unsubscribe = onSnapshot(collection(db, "users"), (snapshot) => {
+    const unsubscribe = onSnapshot(collection(db, "presence"), (snapshot) => {
       const allUsers = snapshot.docs.map((docSnapshot) => {
         const data = docSnapshot.data();
 

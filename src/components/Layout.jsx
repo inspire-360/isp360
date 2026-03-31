@@ -55,7 +55,6 @@ export default function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  usePresence();
 
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [showFocusNotice, setShowFocusNotice] = useState(false);
@@ -64,6 +63,8 @@ export default function Layout() {
     role: "learner",
     photoURL: currentUser?.photoURL || "",
   });
+
+  usePresence(userData);
 
   useEffect(() => {
     if (!currentUser) {
@@ -180,7 +181,16 @@ export default function Layout() {
     try {
       sessionStorage.setItem("manualLogout", "true");
       try {
-        await writePresence(currentUser?.uid, false);
+        await writePresence(
+          {
+            uid: currentUser?.uid,
+            name: userData.name,
+            photoURL: userData.photoURL,
+            role: userData.role,
+          },
+          false,
+          userData.role,
+        );
       } catch (presenceError) {
         console.warn("Presence update before logout failed:", presenceError);
       }

@@ -15,6 +15,7 @@ import { useNavigate } from "react-router-dom";
 import { auth, db } from "../lib/firebase";
 import { useAuth } from "../contexts/AuthContext";
 import { getRoleLabel, prefixOptions } from "../data/profileOptions";
+import { writePresence } from "../hooks/usePresence";
 import {
   readLocalProfileCache,
   writeLocalProfileCache,
@@ -231,6 +232,20 @@ export default function Profile() {
       }
 
       writeLocalProfileCache(currentUser.uid, localProfilePayload);
+      try {
+        await writePresence(
+          {
+            uid: currentUser.uid,
+            name: fullName,
+            photoURL: nextPhotoURL,
+            role: formData.role || "learner",
+          },
+          true,
+          formData.role || "learner",
+        );
+      } catch (presenceError) {
+        console.error("Error syncing presence profile:", presenceError);
+      }
       setFormData((previous) => ({
         ...previous,
         photoURL: nextPhotoURL,

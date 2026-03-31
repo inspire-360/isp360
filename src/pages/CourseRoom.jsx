@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { AnimatePresence } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowRight,
   CheckCircle2,
@@ -61,6 +61,8 @@ const pageReveal = {
   hidden: { opacity: 0, y: 18 },
   show: { opacity: 1, y: 0, transition: { duration: 0.35, ease: "easeOut" } },
 };
+const MotionDiv = motion.div;
+const MotionSection = motion.section;
 
 export default function CourseRoom() {
   const { currentUser } = useAuth();
@@ -773,7 +775,7 @@ export default function CourseRoom() {
 
       <AnimatePresence>
         {feedback && (
-          <motion.div
+          <MotionDiv
             initial={{ opacity: 0, y: -16 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -12 }}
@@ -783,7 +785,7 @@ export default function CourseRoom() {
               <p className="font-semibold">{feedback.title}</p>
               <p className="mt-1 text-sm leading-6 text-slate-200">{feedback.message}</p>
             </div>
-          </motion.div>
+          </MotionDiv>
         )}
       </AnimatePresence>
 
@@ -992,7 +994,7 @@ export default function CourseRoom() {
             </section>
 
             <AnimatePresence mode="wait">
-              <motion.section
+              <MotionSection
                 key={currentLesson.id}
                 initial="hidden"
                 animate="show"
@@ -1011,7 +1013,7 @@ export default function CourseRoom() {
                 </div>
 
                 <div className="pt-8">{renderLessonBody()}</div>
-              </motion.section>
+              </MotionSection>
             </AnimatePresence>
           </div>
         </div>
