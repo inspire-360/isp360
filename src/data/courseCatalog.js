@@ -12,7 +12,7 @@ export const courseCatalog = [
     iconName: "BookOpen",
     requiresCode: true,
     accessCode: "TEACHER360",
-    path: "/course/teacher",
+    path: "/course/teacher/module-1",
     accessLabel: "เข้าเรียนด้วยรหัสรุ่น",
     outcomes: [
       "เส้นทางเรียนรู้ครบทั้งวิเคราะห์ปัญหา ออกแบบแผน PLC นวัตกรรม และ reflection",

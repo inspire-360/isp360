@@ -401,15 +401,15 @@ export default function CourseRoom() {
   }, [currentLesson, progress.quizScores]);
 
   useEffect(() => {
-    if (!initialized || !currentModule || !currentLesson) {
+    if (!initialized || !currentModule) {
       return;
     }
 
-    const targetPath = `/course/teacher/${currentModule.id}/${currentLesson.id}`;
+    const targetPath = `/course/teacher/${currentModule.id}`;
     if (location.pathname !== targetPath) {
       navigate(targetPath, { replace: true });
     }
-  }, [currentLesson, currentModule, initialized, location.pathname, navigate]);
+  }, [currentModule, initialized, location.pathname, navigate]);
 
   function updateModuleState(moduleKey, updater) {
     setCourseState((previous) => ({
