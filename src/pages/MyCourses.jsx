@@ -20,6 +20,18 @@ function formatDate(value) {
   return value.toDate().toLocaleDateString();
 }
 
+function getEnrollmentStatusLabel(status) {
+  if (status === "completed") {
+    return "เรียนจบแล้ว";
+  }
+
+  if (status === "active") {
+    return "กำลังเรียน";
+  }
+
+  return status || "กำลังเรียน";
+}
+
 export default function MyCourses() {
   const { currentUser } = useAuth();
   const navigate = useNavigate();
@@ -166,9 +178,7 @@ export default function MyCourses() {
                       ใช้เวลาประมาณ {course.hours} ชั่วโมง
                     </span>
                     <span className="rounded-full border border-emerald-300/15 bg-emerald-400/10 px-3 py-1 text-xs font-medium text-emerald-300">
-                      {course.enrollment.status === "active"
-                        ? "กำลังเรียน"
-                        : course.enrollment.status || "กำลังเรียน"}
+                      {getEnrollmentStatusLabel(course.enrollment.status)}
                     </span>
                   </div>
 

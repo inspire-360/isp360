@@ -28,6 +28,11 @@ export const PLC_TEACHER_POOL = [
   { name: "ครูณัฐชยา เสถียร", uid: "PLC-2406" },
 ];
 
+export const TOTAL_TEACHER_LESSONS = teacherCourseData.modules.reduce(
+  (sum, module) => sum + module.lessons.length,
+  0,
+);
+
 export function deepMerge(baseValue, incomingValue) {
   if (Array.isArray(baseValue)) {
     return Array.isArray(incomingValue) ? incomingValue : baseValue;
@@ -127,6 +132,47 @@ export function createExpandedMap(currentModuleIndex) {
     accumulator[index] = index <= currentModuleIndex;
     return accumulator;
   }, {});
+}
+
+export function getTeacherCourseProgressPercent(completedLessons = []) {
+  if (!TOTAL_TEACHER_LESSONS) {
+    return 0;
+  }
+
+  return Math.round((completedLessons.length / TOTAL_TEACHER_LESSONS) * 100);
+}
+
+export function getTeacherCourseStatus(completedLessons = []) {
+  return completedLessons.length >= TOTAL_TEACHER_LESSONS && TOTAL_TEACHER_LESSONS > 0
+    ? "completed"
+    : "active";
+}
+
+export function buildTeacherModuleStatuses(completedLessons = []) {
+  const completedSet = new Set(completedLessons);
+  let unlocked = true;
+
+  return teacherCourseData.modules.map((module) => {
+    const lessonIds = module.lessons.map((lesson) => lesson.id);
+    const completedCount = lessonIds.filter((lessonId) => completedSet.has(lessonId)).length;
+    const totalLessons = lessonIds.length;
+    const isCompleted = totalLessons > 0 && completedCount === totalLessons;
+    const isActive = unlocked && !isCompleted;
+    const status = isCompleted ? "completed" : isActive ? "active" : "locked";
+
+    if (!isCompleted && unlocked) {
+      unlocked = false;
+    }
+
+    return {
+      id: module.id,
+      title: module.title,
+      completedLessons: completedCount,
+      totalLessons,
+      progressPercent: totalLessons ? Math.round((completedCount / totalLessons) * 100) : 0,
+      status,
+    };
+  });
 }
 
 export function getModuleIndexFromPath(pathname) {

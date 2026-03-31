@@ -42,15 +42,20 @@ import {
   PLC_TEACHER_POOL,
   buildInsightTokens,
   buildQuizProgress,
+  buildTeacherModuleStatuses,
   createExpandedMap,
   deepMerge,
   formatCountdown,
   getFirstIncompleteLessonIndex,
   getModuleIndexFromPath,
+  getTeacherCourseProgressPercent,
+  getTeacherCourseStatus,
   getStrategyGuidance,
   getStrategyType,
   isLessonLocked,
   normalizeProgress,
+  normalizeTimestamp,
+  TOTAL_TEACHER_LESSONS,
   withCompletedLesson,
 } from "../lib/teacherCourseHelpers";
 import { getIcon } from "../utils/iconHelper";
@@ -100,6 +105,7 @@ export default function CourseRoom() {
 
   const feedbackTimeoutRef = useRef(null);
   const initialPathRef = useRef(location.pathname);
+  const completedAtRef = useRef(null);
 
   const currentModule = teacherCourseData.modules[activeModuleIndex];
   const currentLesson = currentModule?.lessons?.[activeLessonIndex];
@@ -110,13 +116,13 @@ export default function CourseRoom() {
   const cooldownRemaining = currentQuizId
     ? getQuizCooldownRemaining(progress.quizCooldowns, currentQuizId)
     : 0;
-  const totalLessons = teacherCourseData.modules.reduce(
-    (sum, module) => sum + module.lessons.length,
-    0,
+  const totalLessons = TOTAL_TEACHER_LESSONS;
+  const moduleStatuses = useMemo(
+    () => buildTeacherModuleStatuses(progress.completedLessons),
+    [progress.completedLessons],
   );
-  const overallProgress = Math.round(
-    (progress.completedLessons.length / totalLessons) * 100,
-  );
+  const overallProgress = getTeacherCourseProgressPercent(progress.completedLessons);
+  const enrollmentStatus = getTeacherCourseStatus(progress.completedLessons);
   const moduleCompletionCount = currentModule
     ? currentModule.lessons.filter((lesson) =>
         progress.completedLessons.includes(lesson.id),
@@ -173,6 +179,11 @@ export default function CourseRoom() {
           snapshot.exists()
             ? remoteData
             : localEnrollment || createLocalEnrollmentPayload(teacherCourseData, "local-cache");
+        const completedAtValue = baseEnrollment.completedAt || localEnrollment?.completedAt || null;
+        const completedAtTimestamp = normalizeTimestamp(completedAtValue);
+        completedAtRef.current = completedAtTimestamp
+          ? new Date(completedAtTimestamp).toISOString()
+          : null;
         if (!snapshot.exists()) {
           try {
             await setDoc(
@@ -207,6 +218,8 @@ export default function CourseRoom() {
             ? routeModuleIndex
             : mergedProgress.currentModuleIndex;
 
+        const mergedModuleStatuses = buildTeacherModuleStatuses(mergedProgress.completedLessons);
+        const mergedEnrollmentStatus = getTeacherCourseStatus(mergedProgress.completedLessons);
         writeLocalEnrollment(currentUser.uid, COURSE_ID, {
           ...baseEnrollment,
           courseState: mergedState,
@@ -216,7 +229,12 @@ export default function CourseRoom() {
           quizScores: mergedProgress.quizScores,
           quizCooldowns: mergedProgress.quizCooldowns,
           badges: mergedProgress.badges,
-          status: "active",
+          moduleStatuses: mergedModuleStatuses,
+          progress: getTeacherCourseProgressPercent(mergedProgress.completedLessons),
+          status: mergedEnrollmentStatus,
+          ...(mergedEnrollmentStatus === "completed"
+            ? { completedAt: baseEnrollment.completedAt || new Date().toISOString() }
+            : {}),
           lastAccess: new Date().toISOString(),
         });
 
@@ -283,6 +301,10 @@ export default function CourseRoom() {
       return undefined;
     }
 
+    if (enrollmentStatus === "completed" && !completedAtRef.current) {
+      completedAtRef.current = new Date().toISOString();
+    }
+
     writeLocalDraft(currentUser.uid, { courseState, progress });
     writeLocalEnrollment(currentUser.uid, COURSE_ID, {
       courseId: COURSE_ID,
@@ -294,7 +316,12 @@ export default function CourseRoom() {
       quizScores: progress.quizScores,
       quizCooldowns: progress.quizCooldowns,
       badges: progress.badges,
-      status: "active",
+      moduleStatuses,
+      progress: overallProgress,
+      status: enrollmentStatus,
+      ...(enrollmentStatus === "completed"
+        ? { completedAt: completedAtRef.current }
+        : {}),
       lastAccess: new Date().toISOString(),
     });
     const enrollmentRef = doc(db, "users", currentUser.uid, "enrollments", COURSE_ID);
@@ -312,7 +339,12 @@ export default function CourseRoom() {
             quizScores: progress.quizScores,
             quizCooldowns: progress.quizCooldowns,
             badges: progress.badges,
-            status: "active",
+            moduleStatuses,
+            progress: overallProgress,
+            status: enrollmentStatus,
+            ...(enrollmentStatus === "completed"
+              ? { completedAt: new Date(completedAtRef.current) }
+              : {}),
             lastAccess: new Date(),
           },
           { merge: true },
@@ -325,7 +357,7 @@ export default function CourseRoom() {
     }, 700);
 
     return () => window.clearTimeout(timeoutId);
-  }, [courseState, currentUser, initialized, progress]);
+  }, [courseState, currentUser, enrollmentStatus, initialized, moduleStatuses, overallProgress, progress]);
 
   useEffect(() => {
     if (!currentLesson || currentLesson.type !== "quiz") {

@@ -3,6 +3,11 @@ import {
   createDefaultTeacherCourseState,
   createDefaultTeacherProgress,
 } from "../data/teacherCourseState";
+import {
+  buildTeacherModuleStatuses,
+  getTeacherCourseProgressPercent,
+  getTeacherCourseStatus,
+} from "./teacherCourseHelpers";
 
 export function getPendingEnrollmentStorageKey(courseId) {
   return `pending-enrollment:${courseId}`;
@@ -32,6 +37,8 @@ export function createEnrollmentPayload(course, codeUsed) {
 
   return {
     ...basePayload,
+    progress: getTeacherCourseProgressPercent(defaultProgress.completedLessons),
+    status: getTeacherCourseStatus(defaultProgress.completedLessons),
     courseState: createDefaultTeacherCourseState(),
     completedLessons: defaultProgress.completedLessons,
     currentModuleIndex: defaultProgress.currentModuleIndex,
@@ -39,6 +46,7 @@ export function createEnrollmentPayload(course, codeUsed) {
     quizScores: defaultProgress.quizScores,
     quizCooldowns: defaultProgress.quizCooldowns,
     badges: defaultProgress.badges,
+    moduleStatuses: buildTeacherModuleStatuses(defaultProgress.completedLessons),
   };
 }
 
@@ -62,6 +70,8 @@ export function createLocalEnrollmentPayload(course, codeUsed) {
 
   return {
     ...basePayload,
+    progress: getTeacherCourseProgressPercent(defaultProgress.completedLessons),
+    status: getTeacherCourseStatus(defaultProgress.completedLessons),
     courseState: createDefaultTeacherCourseState(),
     completedLessons: defaultProgress.completedLessons,
     currentModuleIndex: defaultProgress.currentModuleIndex,
@@ -69,6 +79,7 @@ export function createLocalEnrollmentPayload(course, codeUsed) {
     quizScores: defaultProgress.quizScores,
     quizCooldowns: defaultProgress.quizCooldowns,
     badges: defaultProgress.badges,
+    moduleStatuses: buildTeacherModuleStatuses(defaultProgress.completedLessons),
   };
 }
 
