@@ -1,4 +1,9 @@
-import { insightDimensions, swotBuckets } from "../data/teacherCourse";
+import {
+  externalScanFactors,
+  insightDimensions,
+  swotBuckets,
+} from "../data/teacherCourse";
+import { buildModule1Swot } from "./teacherCourseHelpers";
 
 export function makeUniqueId(prefix, userId) {
   const year = new Date().getFullYear();
@@ -26,11 +31,11 @@ export function buildModuleReportSvg({
   const sections = getModuleSections(moduleKey, courseState);
 
   return buildReportTemplate({
-    title: `InSPIRE 360° Report Card`,
+    title: "InSPIRE 360 Report Card",
     subtitle: badgeName,
     reportId,
     ownerName: userName,
-    footer: "Generated from the InSPIRE 360° Teacher pathway",
+    footer: "Generated from the InSPIRE 360 Teacher pathway",
     sections,
   });
 }
@@ -41,11 +46,11 @@ export function buildFinalCertificateSvg({
   badges = [],
 }) {
   return buildReportTemplate({
-    title: "Certificate of InSPIRE 360°",
+    title: "Certificate of InSPIRE 360",
     subtitle: "Teacher Development Pathway",
     reportId,
     ownerName: userName,
-    footer: "Completed all teacher modules, final post-test and platform survey",
+    footer: "Completed all teacher modules, final post-test, and platform survey",
     sections: [
       {
         heading: "ความสำเร็จ",
@@ -59,8 +64,10 @@ export function buildFinalCertificateSvg({
         heading: "Badges",
         lines:
           badges.length > 0
-            ? [badges.join(" • ")]
-            : ["In-Sight Badge • S-Design Badge • P-PLC Badge • In-Innovation Badge • RE-Reflection Badge"],
+            ? [badges.join(" | ")]
+            : [
+                "In-Sight Badge | S-Design Badge | P-PLC Badge | In-Innovation Badge | RE-Reflection Badge",
+              ],
       },
     ],
   });
@@ -70,30 +77,39 @@ function getModuleSections(moduleKey, courseState) {
   const moduleState = courseState[moduleKey];
 
   if (moduleKey === "module1") {
+    const moduleSwot = buildModule1Swot(moduleState);
+
     return [
       {
-        heading: "9 Dimensions",
+        heading: "9 Classroom Dimensions",
         lines: insightDimensions.map((dimension) => {
           const entry = moduleState.dimensions[dimension.key];
-          return `${dimension.label}: ${trimText(entry.answer)} (ระดับปัญหา ${entry.rating || 0}/5)`;
+          return `${dimension.label}: S ${trimText(entry.strength)} | W ${trimText(entry.weakness)} | Rating ${entry.rating || 0}/5`;
         }),
       },
       {
-        heading: "SWOT Snapshot",
+        heading: "Look Out Of The Room",
+        lines: externalScanFactors.map((factor) => {
+          const entry = moduleState.externalScan[factor.key];
+          return `${factor.label}: O ${trimText(entry.opportunity)} | T ${trimText(entry.threat)}`;
+        }),
+      },
+      {
+        heading: "TOWS Snapshot",
         lines: swotBuckets.map(
           (bucket) =>
-            `${bucket.thaiLabel}: ${trimText((moduleState.swot[bucket.key] || []).join(" • "), 120) || "-"}`,
+            `${bucket.thaiLabel}: ${trimText((moduleSwot[bucket.key] || []).join(" | "), 130)}`,
         ),
       },
       {
-        heading: "กลยุทธ์ที่พัฒนาแล้ว",
+        heading: "Strategies",
         lines:
           moduleState.strategies.length > 0
             ? moduleState.strategies.map(
                 (strategy, index) =>
                   `${index + 1}. ${strategy.type} | ${trimText(strategy.title || strategy.description, 120)}`,
               )
-            : ["ยังไม่มีกลยุทธ์"],
+            : ["-"],
       },
       {
         heading: "In-Sight Card",
@@ -114,10 +130,20 @@ function getModuleSections(moduleKey, courseState) {
   if (moduleKey === "module2") {
     return [
       {
-        heading: "Dream & Vibe",
+        heading: "Dream Lab Matrix",
         lines: [
-          `Dream Lab: ${trimText(moduleState.dreamLab)}`,
-          `Vibe Check: ${trimText(moduleState.vibeCheck)}`,
+          `SO: ${trimText(moduleState.dreamLabMatrix.so)}`,
+          `WO: ${trimText(moduleState.dreamLabMatrix.wo)}`,
+          `ST: ${trimText(moduleState.dreamLabMatrix.st)}`,
+          `WT: ${trimText(moduleState.dreamLabMatrix.wt)}`,
+        ],
+      },
+      {
+        heading: "Vibe Check",
+        lines: [
+          `Visual: ${trimText(moduleState.vibeBoard.visual)}`,
+          `Audio: ${trimText(moduleState.vibeBoard.audio)}`,
+          `Feeling: ${trimText(moduleState.vibeBoard.feeling)}`,
         ],
       },
       {
@@ -136,8 +162,10 @@ function getModuleSections(moduleKey, courseState) {
           `Where: ${trimText(moduleState.fiveWOneH.where)}`,
           `Why: ${trimText(moduleState.fiveWOneH.why)}`,
           `How: ${trimText(moduleState.fiveWOneH.how)}`,
-          `SMART: ${trimText(Object.values(moduleState.smartGoal).join(" | "), 140)}`,
-          `Quality Check: OECD ${trimText(moduleState.qualityCheck.oecd)} | ร.10 ${trimText(moduleState.qualityCheck.royalPolicy)} | SEZ ${trimText(moduleState.qualityCheck.sez)}`,
+          `SMART: ${trimText(Object.values(moduleState.smartGoal).join(" | "), 160)}`,
+          `OECD: ${trimText(moduleState.qualityCheck.oecd, 120)}`,
+          `Royal Policy: ${trimText(moduleState.qualityCheck.royalPolicy, 120)}`,
+          `Tak SEZ: ${trimText(moduleState.qualityCheck.sez, 120)}`,
         ],
       },
     ];
@@ -150,17 +178,34 @@ function getModuleSections(moduleKey, courseState) {
         lines: [
           `หัวข้อ PLC: ${trimText(moduleState.meetingTopic)}`,
           `คู่ PLC: ${trimText(moduleState.pairedTeacherName)}`,
+          `รูปแบบ: ${trimText(moduleState.meetingFormat)} | กลุ่ม ${trimText(moduleState.meetingSize)}`,
           `วันเวลา: ${trimText(`${moduleState.meetingDate} ${moduleState.meetingTime}`)}`,
-          `ลิงก์ห้องประชุม: ${trimText(moduleState.meetLink)}`,
+          `Meet Link: ${trimText(moduleState.meetLink)}`,
+          `Meeting Location: ${trimText(moduleState.meetingLocation)}`,
         ],
       },
       {
-        heading: "PLC Reflection",
+        heading: "Roles & Logbook",
         lines: [
-          `สรุป PLC: ${trimText(moduleState.plcReport, 140)}`,
-          `หลักฐาน: ${trimText(moduleState.plcScreenshotUrl)}`,
+          `Facilitator: ${trimText(moduleState.plcRoles.facilitator)}`,
+          `Time Keeper: ${trimText(moduleState.plcRoles.timeKeeper)}`,
+          `Challenger: ${trimText(moduleState.plcRoles.challenger)}`,
+          `Note Taker: ${trimText(moduleState.plcRoles.noteTaker)}`,
+          `One-Page Logbook: ${trimText(moduleState.plcLogbook, 140)}`,
+          `Aha! Moment: ${trimText(moduleState.ahaMoment, 140)}`,
+          `PLC Summary: ${trimText(moduleState.plcReport, 140)}`,
+          `Vibe Evidence: ${trimText(moduleState.plcVibeEvidenceUrl || moduleState.plcScreenshotUrl)}`,
+        ],
+      },
+      {
+        heading: "60-Second Spell",
+        lines: [
+          `Hook: ${trimText(moduleState.pitchOutline.hook, 120)}`,
+          `Pain Point: ${trimText(moduleState.pitchOutline.painPoint, 120)}`,
+          `Solution: ${trimText(moduleState.pitchOutline.solution, 120)}`,
+          `Impact: ${trimText(moduleState.pitchOutline.impact, 120)}`,
           `Pitch Script: ${trimText(moduleState.pitchScript, 140)}`,
-          `Pitch Audio: ${trimText(moduleState.pitchAudioUrl)}`,
+          `Pitch Media: ${trimText(moduleState.pitchMediaUrl || moduleState.pitchAudioUrl)}`,
         ],
       },
     ];
@@ -172,18 +217,28 @@ function getModuleSections(moduleKey, courseState) {
         heading: "Innovation Lab",
         lines: [
           `ชื่อนวัตกรรม: ${trimText(moduleState.innovationName)}`,
+          `สูตรผสม: ${trimText(moduleState.innovationFormula)}`,
           `Hardware: ${trimText(moduleState.hardware)}`,
           `Software: ${trimText(moduleState.software)}`,
           `Active Learning: ${trimText(moduleState.activeLearning)}`,
         ],
       },
       {
-        heading: "Lesson Plan & Crafting",
+        heading: "Master Blueprint",
         lines: [
-          `Lesson Plan: ${trimText(moduleState.lessonPlan, 140)}`,
-          `Assessment: ${trimText(moduleState.assessmentPlan)}`,
-          `หลักฐานสื่อ: ${trimText(moduleState.mediaEvidenceUrl)}`,
-          `คำอธิบายสื่อ: ${trimText(moduleState.mediaDescription, 120)}`,
+          `Hook: ${trimText(moduleState.lessonBlueprint.hook, 140)}`,
+          `Action: ${trimText(moduleState.lessonBlueprint.action, 140)}`,
+          `Reflect: ${trimText(moduleState.lessonBlueprint.reflect, 140)}`,
+          `Lesson Asset: ${trimText(moduleState.lessonPlanUrl)}`,
+        ],
+      },
+      {
+        heading: "Crafting & Beta Test",
+        lines: [
+          `Crafting Evidence: ${trimText(moduleState.mediaEvidenceUrl)}`,
+          `Crafting Note: ${trimText(moduleState.mediaDescription, 120)}`,
+          `Strongest Point: ${trimText(moduleState.betaStrength, 120)}`,
+          `Version 2.0 Improve: ${trimText(moduleState.betaImprove, 120)}`,
         ],
       },
     ];
@@ -194,7 +249,7 @@ function getModuleSections(moduleKey, courseState) {
       {
         heading: "Teaching in Action",
         lines: [
-          `คลิปการสอน: ${trimText(moduleState.teachingClipUrl)}`,
+          `คลิปการสอน 50-60 นาที: ${trimText(moduleState.teachingClipUrl)}`,
           `บริบทชั้นเรียน: ${trimText(moduleState.classroomContext, 120)}`,
         ],
       },

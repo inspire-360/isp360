@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+﻿import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -19,7 +19,12 @@ import { doc, getDoc, setDoc } from "firebase/firestore";
 import SwotBalanceChart from "../components/activities/SwotBalanceChart";
 import { useAuth } from "../contexts/AuthContext";
 import { db } from "../lib/firebase";
-import { insightDimensions, swotBuckets, teacherCourseData } from "../data/teacherCourse";
+import {
+  externalScanFactors,
+  insightDimensions,
+  swotBuckets,
+  teacherCourseData,
+} from "../data/teacherCourse";
 import {
   createDefaultTeacherCourseState,
   createDefaultTeacherProgress,
@@ -43,11 +48,12 @@ import {
   buildInsightTokens,
   buildQuizProgress,
   buildTeacherModuleStatuses,
+  buildModule1Swot,
   createExpandedMap,
   deepMerge,
   formatCountdown,
-  getFirstIncompleteLessonIndex,
-  getModuleIndexFromPath,
+  getLessonSelectionFromPath,
+  getPreferredLessonIndex,
   getTeacherCourseProgressPercent,
   getTeacherCourseStatus,
   getStrategyGuidance,
@@ -123,26 +129,43 @@ export default function CourseRoom() {
   );
   const overallProgress = getTeacherCourseProgressPercent(progress.completedLessons);
   const enrollmentStatus = getTeacherCourseStatus(progress.completedLessons);
+  const completedRequiredLessonCount = teacherCourseData.modules
+    .flatMap((module) =>
+      module.lessons.filter(
+        (lesson, lessonIndex) =>
+          !(lessonIndex === 0 && lesson.type === "article") &&
+          progress.completedLessons.includes(lesson.id),
+      ),
+    ).length;
+  const currentModuleRequiredLessons = currentModule
+    ? currentModule.lessons.filter(
+        (lesson, lessonIndex) => !(lessonIndex === 0 && lesson.type === "article"),
+      )
+    : [];
   const moduleCompletionCount = currentModule
-    ? currentModule.lessons.filter((lesson) =>
+    ? currentModuleRequiredLessons.filter((lesson) =>
         progress.completedLessons.includes(lesson.id),
       ).length
     : 0;
   const currentModuleKey = currentModule
     ? MODULE_STATE_KEY_BY_ID[currentModule.id]
     : null;
+  const module1Swot = useMemo(
+    () => buildModule1Swot(courseState.module1),
+    [courseState.module1],
+  );
   const insightTokens = useMemo(
-    () => buildInsightTokens(courseState.module1.dimensions, courseState.module1.swot),
-    [courseState.module1.dimensions, courseState.module1.swot],
+    () => buildInsightTokens(courseState.module1.dimensions, module1Swot),
+    [courseState.module1.dimensions, module1Swot],
   );
   const swotChartValues = useMemo(
     () =>
       swotBuckets.map((bucket, index) => ({
         label: bucket.thaiLabel,
-        value: courseState.module1.swot[bucket.key].length,
+        value: module1Swot[bucket.key].length,
         color: ["#6366f1", "#f97316", "#22c55e", "#ef4444"][index],
       })),
-    [courseState.module1.swot],
+    [module1Swot],
   );
 
   useEffect(() => {
@@ -212,11 +235,23 @@ export default function CourseRoom() {
           localDraft?.courseState || {},
         );
         const mergedProgress = normalizeProgress(defaultProgress, baseEnrollment, localDraft);
-        const routeModuleIndex = getModuleIndexFromPath(initialPathRef.current);
+        const routeSelection = getLessonSelectionFromPath(initialPathRef.current);
+        const routeModuleIndex = routeSelection?.moduleIndex ?? null;
         const initialModuleIndex =
           routeModuleIndex !== null && routeModuleIndex <= mergedProgress.currentModuleIndex
             ? routeModuleIndex
             : mergedProgress.currentModuleIndex;
+        const requestedLessonIndex = routeSelection?.lessonIndex;
+        const preferredLessonIndex = getPreferredLessonIndex(
+          teacherCourseData.modules[initialModuleIndex],
+          mergedProgress.completedLessons,
+        );
+        const initialLessonIndex =
+          requestedLessonIndex !== null &&
+          requestedLessonIndex !== undefined &&
+          !isLessonLocked(initialModuleIndex, requestedLessonIndex, mergedProgress)
+            ? requestedLessonIndex
+            : preferredLessonIndex;
 
         const mergedModuleStatuses = buildTeacherModuleStatuses(mergedProgress.completedLessons);
         const mergedEnrollmentStatus = getTeacherCourseStatus(mergedProgress.completedLessons);
@@ -245,12 +280,7 @@ export default function CourseRoom() {
         setCourseState(mergedState);
         setProgress(mergedProgress);
         setActiveModuleIndex(initialModuleIndex);
-        setActiveLessonIndex(
-          getFirstIncompleteLessonIndex(
-            teacherCourseData.modules[initialModuleIndex],
-            mergedProgress.completedLessons,
-          ),
-        );
+        setActiveLessonIndex(initialLessonIndex);
         setExpandedModules(createExpandedMap(mergedProgress.currentModuleIndex));
         setInitialized(true);
       } catch (error) {
@@ -274,7 +304,7 @@ export default function CourseRoom() {
           setProgress(fallbackProgress);
           setActiveModuleIndex(fallbackProgress.currentModuleIndex);
           setActiveLessonIndex(
-            getFirstIncompleteLessonIndex(
+            getPreferredLessonIndex(
               teacherCourseData.modules[fallbackProgress.currentModuleIndex],
               fallbackProgress.completedLessons,
             ),
@@ -282,7 +312,7 @@ export default function CourseRoom() {
           setExpandedModules(createExpandedMap(fallbackProgress.currentModuleIndex));
           setInitialized(true);
         }
-        showFeedback(setFeedback, feedbackTimeoutRef, "error", "โหลดข้อมูลไม่สำเร็จ", "ระบบจะใช้แบบร่างบนอุปกรณ์ชั่วคราวก่อน");
+        showFeedback(setFeedback, feedbackTimeoutRef, "error", "เนเธซเธฅเธ”เธเนเธญเธกเธนเธฅเนเธกเนเธชเธณเน€เธฃเนเธ", "เธฃเธฐเธเธเธเธฐเนเธเนเนเธเธเธฃเนเธฒเธเธเธเธญเธธเธเธเธฃเธ“เนเธเธฑเนเธงเธเธฃเธฒเธงเธเนเธญเธ");
       } finally {
         if (isMounted) {
           setLoading(false);
@@ -371,15 +401,15 @@ export default function CourseRoom() {
   }, [currentLesson, progress.quizScores]);
 
   useEffect(() => {
-    if (!initialized || !currentModule) {
+    if (!initialized || !currentModule || !currentLesson) {
       return;
     }
 
-    const targetPath = `/course/teacher/${currentModule.id}`;
+    const targetPath = `/course/teacher/${currentModule.id}/${currentLesson.id}`;
     if (location.pathname !== targetPath) {
       navigate(targetPath, { replace: true });
     }
-  }, [currentModule, initialized, location.pathname, navigate]);
+  }, [currentLesson, currentModule, initialized, location.pathname, navigate]);
 
   function updateModuleState(moduleKey, updater) {
     setCourseState((previous) => ({
@@ -392,16 +422,27 @@ export default function CourseRoom() {
     const nextLessonIndex = activeLessonIndex + 1;
     if (nextLessonIndex < currentModule.lessons.length) {
       setActiveLessonIndex(nextLessonIndex);
+      window.requestAnimationFrame(() => {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      });
       return;
     }
 
     if (activeModuleIndex + 1 <= nextProgress.currentModuleIndex) {
       setActiveModuleIndex(activeModuleIndex + 1);
-      setActiveLessonIndex(0);
+      setActiveLessonIndex(
+        getPreferredLessonIndex(
+          teacherCourseData.modules[activeModuleIndex + 1],
+          nextProgress.completedLessons,
+        ),
+      );
       setExpandedModules((previous) => ({
         ...previous,
         [activeModuleIndex + 1]: true,
       }));
+      window.requestAnimationFrame(() => {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      });
     }
   }
 
@@ -441,6 +482,9 @@ export default function CourseRoom() {
       ...previous,
       [moduleIndex]: true,
     }));
+    window.requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    });
 
     if (window.innerWidth < 1024) {
       setSidebarOpen(false);
@@ -454,7 +498,7 @@ export default function CourseRoom() {
       feedbackTimeoutRef,
       "success",
       "อ่านบทนำเรียบร้อยแล้ว",
-      "พร้อมเข้าสู่ภารกิจถัดไปและระบบบันทึกความคืบหน้าไว้แล้วครับ",
+      "พร้อมเข้าสู่ภารกิจถัดไป และระบบบันทึกความคืบหน้าไว้ให้แล้วครับ",
     );
   }
 
@@ -554,7 +598,7 @@ export default function CourseRoom() {
         "success",
         currentLesson.content.mode === "survey" ? "บันทึกคำตอบแล้ว" : "ผ่านแบบทดสอบแล้ว",
         currentLesson.content.mode === "survey"
-          ? "ระบบบันทึกคำตอบสะท้อนผลของคุณเรียบร้อยแล้ว"
+          ? "ระบบบันทึกคำตอบสะท้อนผลของคุณครูเรียบร้อยแล้ว"
           : `คุณได้ ${score} คะแนน และปลดล็อกขั้นตอนถัดไปแล้วครับ`,
       );
       return;
@@ -619,7 +663,7 @@ export default function CourseRoom() {
       feedbackTimeoutRef,
       "success",
       "รับ Certificate เรียบร้อย",
-      "ยอดเยี่ยมมากครับ คุณจบเส้นทาง InSPIRE 360° for Teacher แล้ว",
+      "ยอดเยี่ยมมากครับ คุณครูจบเส้นทาง InSPIRE 360° for Teacher แล้ว",
     );
   }
 
@@ -718,11 +762,19 @@ export default function CourseRoom() {
 
     updateModuleState("module3", (module) => ({
       ...module,
+      meetingFormat: module.meetingFormat || "online",
+      meetingSize: module.meetingSize || "3-4 คน",
       pairedTeacherName: selectedTeacher.name,
       pairedTeacherUid: selectedTeacher.uid,
       meetingDate: scheduledDate.toISOString().slice(0, 10),
       meetingTime: "19:00",
       meetLink: module.meetLink || "https://meet.google.com/new",
+      plcRoles: {
+        facilitator: module.plcRoles.facilitator || currentUserName,
+        timeKeeper: module.plcRoles.timeKeeper || selectedTeacher.name,
+        challenger: module.plcRoles.challenger || "ทีม PLC",
+        noteTaker: module.plcRoles.noteTaker || "ทีม PLC",
+      },
     }));
   }
 
@@ -770,6 +822,7 @@ export default function CourseRoom() {
       currentUserName,
       currentModuleKey,
       insightTokens,
+      module1Swot,
       swotChartValues,
       swotDrafts,
       towsDraft,
@@ -793,7 +846,7 @@ export default function CourseRoom() {
           <div>
             <p className="font-semibold text-white">กำลังเตรียมห้องเรียนรู้</p>
             <p className="mt-1 text-sm text-slate-300">
-              ระบบกำลังโหลดโมดูล กิจกรรม และความคืบหน้าล่าสุดของคุณ
+              ระบบกำลังโหลดโมดูล กิจกรรม และความคืบหน้าล่าสุดของคุณครู
             </p>
           </div>
         </div>
@@ -861,7 +914,7 @@ export default function CourseRoom() {
               />
             </div>
             <div className="mt-4 flex items-center justify-between text-sm text-slate-300">
-              <span>{progress.completedLessons.length}/{totalLessons} ขั้นตอน</span>
+              <span>{completedRequiredLessonCount}/{totalLessons} ขั้นตอน</span>
               <span>{overallProgress}%</span>
             </div>
             <div className="mt-4 rounded-[22px] border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200">
@@ -873,9 +926,11 @@ export default function CourseRoom() {
             <div className="space-y-3">
               {teacherCourseData.modules.map((module, moduleIndex) => {
                 const moduleLocked = moduleIndex > progress.currentModuleIndex;
-                const moduleCompleted = module.lessons.every((lesson) =>
-                  progress.completedLessons.includes(lesson.id),
-                );
+                const moduleCompleted = module.lessons
+                  .filter(
+                    (lesson, lessonIndex) => !(lessonIndex === 0 && lesson.type === "article"),
+                  )
+                  .every((lesson) => progress.completedLessons.includes(lesson.id));
 
                 return (
                   <div key={module.id} className={`overflow-hidden rounded-[26px] border ${
@@ -885,7 +940,7 @@ export default function CourseRoom() {
                       type="button"
                       onClick={() => {
                         if (moduleLocked) {
-                          showFeedback(setFeedback, feedbackTimeoutRef, "warning", "โมดูลยังไม่ปลดล็อก", "ทำขั้นตอนของโมดูลก่อนหน้าให้ครบก่อนครับ");
+                          showFeedback(setFeedback, feedbackTimeoutRef, "warning", "เนเธกเธ”เธนเธฅเธขเธฑเธเนเธกเนเธเธฅเธ”เธฅเนเธญเธ", "เธ—เธณเธเธฑเนเธเธ•เธญเธเธเธญเธเนเธกเธ”เธนเธฅเธเนเธญเธเธซเธเนเธฒเนเธซเนเธเธฃเธเธเนเธญเธเธเธฃเธฑเธ");
                           return;
                         }
                         toggleModule(moduleIndex);
@@ -976,7 +1031,7 @@ export default function CourseRoom() {
 
                 <div className="grid gap-3 sm:grid-cols-2">
                   <DarkStatCard label="โมดูลปัจจุบัน" value={currentModule.navigationLabel} />
-                  <DarkStatCard label="ความคืบหน้าโมดูล" value={`${moduleCompletionCount}/${currentModule.lessons.length}`} />
+                  <DarkStatCard label="ความคืบหน้าโมดูล" value={`${moduleCompletionCount}/${currentModuleRequiredLessons.length || currentModule.lessons.length}`} />
                   <DarkStatCard label="บันทึกล่าสุด" value={getSyncLabel(syncState)} icon={<Clock3 size={16} className="text-amber-200" />} />
                   <DarkStatCard label="Badge ที่ได้" value={`${progress.badges.length} รายการ`} icon={<Trophy size={16} className="text-amber-200" />} />
                 </div>
@@ -1095,63 +1150,94 @@ function getSyncLabel(syncState) {
 
 function buildMentorMessage(currentLesson, progress) {
   if (currentLesson.type === "article") {
-    return "เริ่มจากภาพใหญ่ก่อนนะครับ เมื่อคุณเห็นปลายทางชัด การตัดสินใจในภารกิจถัดไปจะมั่นใจขึ้นมาก";
+    return "เริ่มจากภาพรวมก่อนนะครับ พอเราเห็นเป้าหมายและหลักฐานที่ต้องส่งชัดขึ้น ภารกิจถัดไปจะออกแบบได้มั่นใจขึ้นมาก";
   }
 
   if (currentLesson.type === "quiz") {
     return currentLesson.id === "final-posttest"
-      ? "หายใจลึก ๆ แล้วค่อยตอบทีละข้อครับ Final Post-test คือการสรุปเส้นทางทั้งหมด ไม่ใช่การจับผิด"
-      : "มองคำถามให้เชื่อมกับสิ่งที่คุณทำจริงในโมดูลนี้ จะช่วยให้คำตอบชัดขึ้นครับ";
+      ? "ค่อย ๆ ทบทวนเส้นทางทั้งหมดนะครับ Final Post-test คือการสรุปสิ่งที่คุณครูลงมือทำจริง ไม่ใช่การจับผิด"
+      : "ลองเชื่อมคำถามกับสิ่งที่คุณครูเพิ่งวิเคราะห์หรือออกแบบในโมดูลนี้ คำตอบจะชัดขึ้นมากครับ";
   }
 
   if (currentLesson.type === "certificate") {
-    return "นี่คือช่วงเก็บหลักฐานความสำเร็จของคุณครับ ดาวน์โหลดไฟล์เก็บไว้ใช้ต่อได้ทันที";
+    return "นี่คือช่วงเก็บหลักฐานความสำเร็จของคุณครูครับ ดาวน์โหลดไฟล์ไว้ใช้งานต่อได้ทันที ทั้ง report card และ certificate จะดึงคำตอบจากงานที่ทำจริง";
   }
 
   if (currentLesson.activityType === "swot_visualizer") {
-    return "ลองมองให้ครบทั้ง 4 มุมครับ ถ้าเห็นแต่อุปสรรคอย่างเดียว กลยุทธ์ที่ออกมาจะหนักเกินไป";
+    return "ลองถอยออกมาดูโลกนอกห้องเรียนอีกนิดนะครับ ถ้าเราเห็นทั้งโอกาสและอุปสรรคจาก PESTEL ชัด กลยุทธ์ที่ออกมาจะสมจริงและนำไปใช้ได้มากขึ้น";
   }
 
   if (currentLesson.activityType === "tows_matrix") {
-    return "กลยุทธ์ที่ดีไม่ต้องซับซ้อนครับ แค่เชื่อมจุดแข็งหรือจุดอ่อนกับบริบทภายนอกให้เกิดการลงมือทำได้จริง";
+    return "กลยุทธ์ที่ดีไม่จำเป็นต้องซับซ้อนครับ แค่จับคู่ปัจจัยภายในกับบริบทภายนอกให้ตรง ก็จะเห็นแนวทางลงมือทำที่ชัดขึ้นมาก";
+  }
+
+  if (currentLesson.activityType === "dream_lab") {
+    return "กล้าฝันก่อนนะครับ แล้วค่อยใช้ SO, WO, ST, WT ช่วยจัดระเบียบไอเดียให้กลายเป็นภาพอนาคตที่พาไปได้จริง";
+  }
+
+  if (currentLesson.activityType === "plc_matchmaking") {
+    return "วง PLC จะทรงพลังขึ้นเมื่อบทบาทชัดและนัดหมายชัดครับ ลองออกแบบวงสนทนาให้พร้อมตั้งแต่ก่อนเริ่มคุยจริง";
+  }
+
+  if (currentLesson.activityType === "innovation_lab") {
+    return "ลองมองนวัตกรรมเป็นสูตรผสมนะครับ เครื่องมือที่ใช่เมื่อจับคู่กับวิธีสอนที่เหมาะ จะกลายเป็นคำตอบใหม่ของห้องเรียน";
+  }
+
+  if (currentLesson.activityType === "beta_test") {
+    return "เยี่ยมมากครับ ก่อนลงสนามจริงเต็มรูปแบบ ลองฟังเสียงสะท้อนรอบเล็กก่อน แล้วค่อยอัปเกรดเวอร์ชัน 2.0";
+  }
+
+  if (currentLesson.activityType === "classroom_trial") {
+    return "ภารกิจนี้ไม่ใช่การตัดสินครับ แต่คือการเก็บหลักฐานจริงจากห้องเรียน เพื่อให้การสะท้อนผลรอบถัดไปแม่นขึ้น";
   }
 
   return progress.badges.length > 0
-    ? "ดีมากครับ คุณเริ่มสะสม badge แล้ว ลองรักษาจังหวะนี้ต่อไปทีละภารกิจ"
-    : "ค่อย ๆ ไปทีละขั้นครับ ระบบจะเก็บความคืบหน้าไว้ให้ และคุณสามารถกลับมาแก้ไขได้เสมอ";
+    ? "ดีมากครับ ตอนนี้คุณครูกำลังสะสม badge อย่างต่อเนื่องแล้ว ลองรักษาจังหวะนี้ไว้ทีละภารกิจนะครับ"
+    : "ค่อย ๆ ไปทีละขั้นได้เลยครับ ระบบจะเก็บความคืบหน้าไว้ให้ และคุณครูกลับมาแก้หรือเติมคำตอบได้เสมอ";
 }
 
 function getActivityValidationError(activityType, courseState) {
   switch (activityType) {
     case "insight_dimensions":
       return Object.values(courseState.module1.dimensions).every(
-        (entry) => entry.answer.trim() && entry.rating > 0,
+        (entry) => entry.strength.trim() && entry.weakness.trim() && entry.rating > 0,
       )
         ? ""
-        : "กรุณาตอบให้ครบทั้ง 9 มิติและให้ระดับ pain point อย่างน้อย 1-5 ทุกข้อ";
+        : "กรุณากรอกจุดแข็ง จุดอ่อน และระดับ pain point ให้ครบทั้ง 9 มิติ";
     case "swot_visualizer":
-      return Object.values(courseState.module1.swot).every((items) => items.length > 0)
+      return Object.values(courseState.module1.externalScan).every(
+        (entry) => entry.opportunity.trim() && entry.threat.trim(),
+      )
         ? ""
-        : "กรุณาใส่ข้อมูลอย่างน้อย 1 รายการใน Strengths, Weaknesses, Opportunities และ Threats";
+        : "กรุณากรอกโอกาสและอุปสรรคให้ครบทั้ง 6 ปัจจัย PESTEL";
     case "tows_matrix":
       return courseState.module1.strategies.length >= 3
         ? ""
         : "กรุณาสร้างกลยุทธ์อย่างน้อย 3 แนวทางก่อนบันทึกภารกิจนี้";
     case "needs_detective":
-      return courseState.module1.selectedStrategyId &&
+      return courseState.module1.strategies.length > 0 &&
+        courseState.module1.strategies.every(
+          (strategy) => Number(courseState.module1.strategyRatings[strategy.id] || 0) > 0,
+        ) &&
+        courseState.module1.selectedStrategyId &&
         courseState.module1.insightCard.coreProblem.trim() &&
         courseState.module1.insightCard.realNeed.trim() &&
         courseState.module1.insightCard.solution.trim()
         ? ""
-        : "กรุณาเลือกกลยุทธ์ 1 แนวทาง และกรอก Core Problem / Real Need / Solution ให้ครบ";
+        : "กรุณาให้คะแนนทุกกลยุทธ์ เลือก 1 แนวทาง และกรอก Core Problem / Real Need / Solution ให้ครบ";
     case "pdca_action_plan":
       return Object.values(courseState.module1.actionPlan).every((value) => value.trim())
         ? ""
         : "กรุณากรอก PDCA ให้ครบทั้ง Plan, Do, Check และ Act";
     case "dream_lab":
-      return courseState.module2.dreamLab.trim() ? "" : "กรุณาเขียนภาพฝันของคุณก่อนบันทึก";
+      return courseState.module2.dreamLab.trim() &&
+        Object.values(courseState.module2.dreamLabMatrix).every((value) => value.trim())
+        ? ""
+        : "กรุณาเขียนภาพฝันและตอบมุมมอง SO / WO / ST / WT ให้ครบ";
     case "vibe_check":
-      return courseState.module2.vibeCheck.trim() ? "" : "กรุณาอธิบายบรรยากาศที่อยากเห็นในห้องเรียน";
+      return Object.values(courseState.module2.vibeBoard).every((value) => value.trim())
+        ? ""
+        : "กรุณาอธิบายบรรยากาศที่อยากเห็นให้ครบทั้งภาพ เสียง และความรู้สึก";
     case "roadmap_builder":
       return courseState.module2.roadmap.every(
         (week) => week.focus.trim() && week.actions.trim() && week.evidence.trim(),
@@ -1165,56 +1251,74 @@ function getActivityValidationError(activityType, courseState) {
     case "smart_goal":
       return Object.values(courseState.module2.smartGoal).every((value) => value.trim())
         ? ""
-        : "กรุณาเขียน SMART objective ให้ครบทั้ง 5 ด้าน";
+        : "กรุณาเขียน SMART Objective ให้ครบทั้ง 5 ด้าน";
     case "quality_check":
       return Object.values(courseState.module2.qualityCheck).every((value) => value.trim())
         ? ""
-        : "กรุณาเชื่อมเป้าหมายกับ OECD, พระบรมราโชบาย ร.10 และ SEZ ให้ครบ";
+        : "กรุณาเชื่อมเป้าหมายกับ OECD, พระบรมราโชบาย ร.10 และ Tak SEZ ให้ครบ";
     case "plc_matchmaking":
       return courseState.module3.meetingTopic.trim() &&
+        courseState.module3.meetingFormat &&
         courseState.module3.pairedTeacherName.trim() &&
+        courseState.module3.pairedTeacherUid.trim() &&
         courseState.module3.meetingDate &&
         courseState.module3.meetingTime &&
-        courseState.module3.meetLink.trim()
+        Object.values(courseState.module3.plcRoles).every((value) => value.trim()) &&
+        (
+          courseState.module3.meetingFormat === "online"
+            ? courseState.module3.meetLink.trim()
+            : courseState.module3.meetingLocation.trim()
+        )
         ? ""
-        : "กรุณาระบุหัวข้อ PLC คู่ครู วันเวลา และลิงก์ประชุมให้ครบ";
+        : "กรุณากรอกหัวข้อ PLC ผู้ร่วมวง วันเวลา บทบาท และลิงก์หรือสถานที่นัดหมายให้ครบ";
     case "plc_report":
-      return courseState.module3.plcReport.trim() &&
-        courseState.module3.plcScreenshotUrl.trim()
+      return courseState.module3.plcLogbook.trim() &&
+        courseState.module3.ahaMoment.trim() &&
+        courseState.module3.plcReport.trim() &&
+        (courseState.module3.plcVibeEvidenceUrl.trim() ||
+          courseState.module3.plcScreenshotUrl.trim())
         ? ""
-        : "กรุณากรอกสรุป PLC และแนบลิงก์หลักฐานการประชุม";
+        : "กรุณากรอก Logbook, Aha! Moment, สรุป PLC และแนบหลักฐานบรรยากาศหรือภาพจากการประชุม";
     case "pitching_session":
-      return courseState.module3.pitchScript.trim() &&
-        courseState.module3.pitchAudioUrl.trim()
+      return Object.values(courseState.module3.pitchOutline).every((value) => value.trim()) &&
+        courseState.module3.pitchScript.trim() &&
+        (courseState.module3.pitchMediaUrl.trim() ||
+          courseState.module3.pitchAudioUrl.trim())
         ? ""
-        : "กรุณาใส่ทั้งสคริปต์และลิงก์ไฟล์เสียง";
+        : "กรุณากรอก Hook, Pain Point, Solution, Impact พร้อมสคริปต์และลิงก์ไฟล์ pitch";
     case "innovation_lab":
       return courseState.module4.innovationName.trim() &&
+        courseState.module4.innovationFormula.trim() &&
         courseState.module4.hardware.trim() &&
         courseState.module4.software.trim() &&
         courseState.module4.activeLearning.trim()
         ? ""
-        : "กรุณากรอกชื่อนวัตกรรม เครื่องมือ และรูปแบบ Active Learning ให้ครบ";
+        : "กรุณากรอกชื่อนวัตกรรม สูตรผสม เครื่องมือ และรูปแบบ Active Learning ให้ครบ";
     case "lesson_plan":
-      return courseState.module4.lessonPlan.trim() &&
-        courseState.module4.assessmentPlan.trim()
+      return Object.values(courseState.module4.lessonBlueprint).every((value) => value.trim()) &&
+        courseState.module4.lessonPlanUrl.trim()
         ? ""
-        : "กรุณากรอกแผนการสอนและแผนการประเมินให้ครบ";
+        : "กรุณากรอก Hook, Action, Reflect และแนบลิงก์ blueprint หรือ lesson plan";
     case "crafting_session":
       return courseState.module4.mediaEvidenceUrl.trim() &&
         courseState.module4.mediaDescription.trim()
         ? ""
-        : "กรุณาแนบลิงก์หลักฐานสื่อและอธิบายการใช้งาน";
+        : "กรุณาแนบลิงก์สื่อหรือหลักฐานชิ้นงาน พร้อมอธิบายสั้น ๆ ว่าใช้อย่างไร";
+    case "beta_test":
+      return courseState.module4.betaStrength.trim() &&
+        courseState.module4.betaImprove.trim()
+        ? ""
+        : "กรุณาสรุปจุดแข็งของต้นแบบและสิ่งที่อยากพัฒนาในเวอร์ชัน 2.0";
     case "classroom_trial":
       return courseState.module5.teachingClipUrl.trim() &&
         courseState.module5.classroomContext.trim()
         ? ""
-        : "กรุณาใส่ลิงก์คลิปการสอนและบริบทของคาบเรียน";
+        : "กรุณาแนบคลิปการสอนจริง 50-60 นาที และอธิบายบริบทของคาบเรียน";
     case "reflection_log":
       return courseState.module5.reflectionLog.trim() &&
         courseState.module5.learnerResponse.trim()
         ? ""
-        : "กรุณาเขียน reflection และเสียงตอบรับของผู้เรียน";
+        : "กรุณาเขียน reflection และเสียงตอบรับของผู้เรียนให้ครบ";
     case "growth_plan":
       return courseState.module5.nextGrowthPlan.trim()
         ? ""
@@ -1259,7 +1363,7 @@ function StarRating({ value, onChange }) {
           {item}
         </button>
       ))}
-      <span className="text-sm text-slate-500">{STAR_COPY[value - 1] || "ยังไม่ให้คะแนน"}</span>
+      <span className="text-sm text-slate-500">{STAR_COPY[value - 1] || "ยังไม่ได้ให้คะแนน"}</span>
     </div>
   );
 }
@@ -1276,31 +1380,123 @@ function RatingCard({ title, description, value, onChange }) {
   );
 }
 
+function getLessonEmbedUrl(url) {
+  if (!url) {
+    return "";
+  }
+
+  try {
+    const parsedUrl = new URL(url);
+
+    if (parsedUrl.hostname.includes("canva.com") && !parsedUrl.searchParams.has("embed")) {
+      parsedUrl.searchParams.set("embed", "1");
+      return parsedUrl.toString();
+    }
+
+    return parsedUrl.toString();
+  } catch {
+    return url;
+  }
+}
+
 function renderArticleLesson({ lesson, onComplete }) {
+  const focusList = lesson.content.focusList || [];
+  const embeddedLessonUrl = getLessonEmbedUrl(lesson.content.lessonUrl);
+  const continueLabel = lesson.id.includes("intro")
+    ? "บันทึกบทนำและไปภารกิจถัดไป"
+    : "บันทึกและไปขั้นถัดไป";
+
   return (
     <div className="space-y-8">
-      <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-        <div className="rounded-[28px] border border-indigo-100 bg-indigo-50/70 p-6">
-          <div className="section-tag border-indigo-200 bg-white text-indigo-700">ภาพรวม</div>
-          <p className="mt-5 text-base leading-8 text-slate-700">{lesson.content.summary}</p>
-          <div className="mt-8">
+      {embeddedLessonUrl && (
+        <section className="overflow-hidden rounded-[30px] border border-slate-200 bg-white">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-6 py-5">
+            <div>
+              <div className="section-tag">Embedded Lesson</div>
+              <p className="mt-3 text-sm leading-7 text-slate-500">
+                บทเรียนต้นฉบับถูกฝังไว้ในหน้านี้แล้ว คุณครูเรียนรู้ต่อได้ทันทีโดยไม่ต้องออกจากระบบ
+              </p>
+            </div>
+            <a
+              href={lesson.content.lessonUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="secondary-button"
+            >
+              เปิดในแท็บใหม่
+            </a>
+          </div>
+          <div className="bg-slate-950/5 p-3 sm:p-4">
+            <iframe
+              src={embeddedLessonUrl}
+              title={`${lesson.title} embedded lesson`}
+              loading="lazy"
+              allow="fullscreen"
+              className="h-[68vh] min-h-[540px] w-full rounded-[24px] border border-slate-200 bg-white"
+            />
+          </div>
+        </section>
+      )}
+
+      <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+        <div className="space-y-6">
+          <div className="rounded-[28px] border border-indigo-100 bg-indigo-50/70 p-6">
+            <div className="section-tag border-indigo-200 bg-white text-indigo-700">ภาพรวมบทเรียน</div>
+            <p className="mt-5 text-base leading-8 text-slate-700">{lesson.content.summary}</p>
+
+            {focusList.length > 0 && (
+              <div className="mt-8">
+                <h3 className="font-display text-2xl font-semibold text-slate-950">ประเด็นสำคัญจากเอกสารต้นฉบับ</h3>
+                <div className="mt-4 grid gap-3">
+                  {focusList.map((item) => (
+                    <div
+                      key={item}
+                      className="rounded-[22px] border border-white bg-white/90 px-4 py-4 text-sm leading-7 text-slate-700"
+                    >
+                      {item}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {lesson.content.lessonUrl && (
+            <div className="rounded-[28px] border border-emerald-100 bg-emerald-50/80 p-6">
+              <div className="section-tag border-emerald-200 bg-white text-emerald-700">แหล่งบทเรียน</div>
+              <p className="mt-4 text-sm leading-7 text-slate-700">
+                เปิดสไลด์หรือเอกสารต้นฉบับเพื่อทบทวนโจทย์ ตัวอย่าง และหลักเกณฑ์ของภารกิจนี้ได้ก่อนลงมือทำจริง
+              </p>
+              <a
+                href={lesson.content.lessonUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="primary-button mt-5 inline-flex"
+              >
+                {lesson.content.lessonUrlLabel || "เปิดบทเรียนต้นฉบับ"}
+                <ArrowRight size={16} />
+              </a>
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-4">
+          <div className="rounded-[28px] border border-slate-200 bg-white p-6">
             <h3 className="font-display text-2xl font-semibold text-slate-950">ผลลัพธ์ที่คาดหวัง</h3>
             <div className="mt-4 grid gap-3">
               {lesson.content.outcomes.map((item) => (
-                <div key={item} className="rounded-2xl border border-white bg-white/90 px-4 py-4 text-sm leading-6 text-slate-700">
+                <div key={item} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm leading-7 text-slate-700">
                   {item}
                 </div>
               ))}
             </div>
           </div>
-        </div>
 
-        <div className="space-y-4">
           <div className="rounded-[28px] border border-slate-200 bg-white p-6">
             <h3 className="font-display text-2xl font-semibold text-slate-950">สิ่งที่ต้องส่งในโมดูลนี้</h3>
             <div className="mt-4 space-y-3">
               {lesson.content.deliverables.map((item) => (
-                <div key={item} className="rounded-[22px] border border-slate-200 bg-slate-50 px-4 py-4 text-sm leading-6 text-slate-600">
+                <div key={item} className="rounded-[22px] border border-slate-200 bg-slate-50 px-4 py-4 text-sm leading-7 text-slate-600">
                   {item}
                 </div>
               ))}
@@ -1320,10 +1516,22 @@ function renderArticleLesson({ lesson, onComplete }) {
         </div>
       </div>
 
-      <button type="button" onClick={onComplete} className="primary-button">
-        อ่านและทำความเข้าใจแล้ว
-        <ArrowRight size={16} />
-      </button>
+      <div className="flex flex-wrap gap-3">
+        <button type="button" onClick={onComplete} className="primary-button">
+          {continueLabel}
+          <ArrowRight size={16} />
+        </button>
+        {lesson.content.lessonUrl && (
+          <a
+            href={lesson.content.lessonUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="secondary-button"
+          >
+            เปิดบทเรียนต้นฉบับ
+          </a>
+        )}
+      </div>
     </div>
   );
 }
@@ -1462,7 +1670,7 @@ function renderCertificateLesson({ lesson, progress, currentUser, currentUserNam
           <h3 className="mt-5 font-display text-3xl font-semibold text-slate-950">{lesson.title}</h3>
           <p className="mt-4 text-sm leading-7 text-slate-600">
             {isFinalCertificate
-              ? "เมื่อดาวน์โหลด certificate ระบบจะบันทึกการจบหลักสูตรให้ทันที พร้อมเก็บ badge ทั้งหมดในเส้นทางครู"
+              ? "เมื่อดาวน์โหลด certificate ระบบจะบันทึกการจบหลักสูตรให้ทันที พร้อมเก็บ badge ทั้งหมดในเส้นทางของครู"
               : "สร้างรายงานสรุปคำตอบของโมดูลนี้ เพื่อใช้เป็นหลักฐานการเรียนรู้และปลดล็อกโมดูลถัดไป"}
           </p>
 
@@ -1487,8 +1695,8 @@ function renderCertificateLesson({ lesson, progress, currentUser, currentUserNam
             <span className="text-xs uppercase tracking-[0.24em]">ตัวอย่าง</span>
           </div>
           <div className="mt-5 space-y-4 text-sm leading-7 text-slate-300">
-            <p>{isFinalCertificate ? "Certificate นี้จะยืนยันว่าคุณผ่านทุกโมดูล, Final Post-test และแบบประเมินความพึงพอใจแล้ว" : "Report Card จะรวมคำตอบและงานสำคัญของโมดูลนี้ไว้ในไฟล์เดียว"}</p>
-            <p>รูปแบบไฟล์เป็น SVG เพื่อให้ดาวน์โหลดได้แบบ client-side และเปิดใช้ต่อในงานเอกสารได้ทันที</p>
+            <p>{isFinalCertificate ? "Certificate นี้จะยืนยันว่าคุณครูผ่านทุกโมดูล, Final Post-test และแบบประเมินความพึงพอใจแล้ว" : "Report Card จะรวมคำตอบและงานสำคัญของโมดูลนี้ไว้ในไฟล์เดียว"}</p>
+            <p>รูปแบบไฟล์เป็น SVG เพื่อให้ดาวน์โหลดได้แบบ client-side และนำไปใช้ต่อในงานเอกสารได้ทันที</p>
           </div>
         </div>
       </div>
@@ -1516,54 +1724,17 @@ function renderActivityLesson(props) {
     case "pdca_action_plan":
       return renderPdcaActionPlan(props);
     case "dream_lab":
-      return renderSingleTextareaActivity({
-        title: "โมดูล 2 | Dream Lab",
-        prompt: "ถ้าไม่มีข้อจำกัดใดเลย คุณอยากเห็นอะไรเกิดขึ้นกับผู้เรียนหรือห้องเรียนของคุณ?",
-        value: props.courseState.module2.dreamLab,
-        onChange: (value) =>
-          props.updateModuleState("module2", (module) => ({ ...module, dreamLab: value })),
-        onComplete: props.onComplete,
-      });
+      return renderDreamLab(props);
     case "vibe_check":
-      return renderSingleTextareaActivity({
-        title: "โมดูล 2 | Vibe Check",
-        prompt: "บรรยากาศการเรียนรู้แบบไหนที่คุณอยากเดินเข้าไปแล้วรู้สึกว่า ‘ใช่เลย’?",
-        value: props.courseState.module2.vibeCheck,
-        onChange: (value) =>
-          props.updateModuleState("module2", (module) => ({ ...module, vibeCheck: value })),
-        onComplete: props.onComplete,
-      });
+      return renderVibeCheck(props);
     default:
       return renderModuleExtension(props);
   }
 }
 
-function renderSingleTextareaActivity({ title, prompt, value, onChange, onComplete }) {
-  return (
-    <div className="space-y-8">
-      <section className="rounded-[30px] border border-slate-200 bg-white p-6">
-        <div className="section-tag">{title}</div>
-        <p className="mt-5 text-base leading-8 text-slate-700">{prompt}</p>
-        <textarea
-          rows={8}
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          className="field-input mt-5 min-h-[220px] resize-y"
-          placeholder="พิมพ์คำตอบของคุณที่นี่..."
-        />
-      </section>
-
-      <button type="button" onClick={onComplete} className="primary-button">
-        บันทึกภารกิจนี้
-        <CheckCircle2 size={16} />
-      </button>
-    </div>
-  );
-}
-
 function renderInsightDimensions({ courseState, updateModuleState, onComplete }) {
   const completedCount = Object.values(courseState.module1.dimensions).filter(
-    (entry) => entry.answer.trim(),
+    (entry) => entry.strength.trim() && entry.weakness.trim() && entry.rating > 0,
   ).length;
 
   return (
@@ -1571,20 +1742,73 @@ function renderInsightDimensions({ courseState, updateModuleState, onComplete })
       <div className="rounded-[28px] border border-indigo-100 bg-indigo-50 p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-sm font-semibold text-indigo-900">ภารกิจสแกนบริบท 9 มิติ</p>
-            <p className="mt-1 text-sm text-indigo-700">ตอบตามความจริงของพื้นที่ แล้วให้ระดับ pain point ในแต่ละหัวข้อ</p>
+            <p className="text-sm font-semibold text-indigo-900">Mission 1 : The 9 Dimensions</p>
+            <p className="mt-1 text-sm leading-7 text-indigo-700">
+              สแกนบริบทภายในห้องเรียนให้ครบทั้ง 9 มิติ โดยมองทั้งจุดแข็ง จุดอ่อน และระดับ pain point เพื่อไม่ให้เกิด blind spots
+            </p>
           </div>
           <div className="rounded-full border border-indigo-200 bg-white px-4 py-2 text-sm font-semibold text-indigo-800">{completedCount}/9 มิติ</div>
         </div>
       </div>
 
       <div className="grid gap-5 lg:grid-cols-2">
-        {Object.entries(courseState.module1.dimensions).map(([key, entry], index) => (
-          <section key={key} className="rounded-[30px] border border-slate-200 bg-white p-5">
+        {insightDimensions.map((dimension, index) => {
+          const entry = courseState.module1.dimensions[dimension.key];
+
+          return (
+          <section key={dimension.key} className="rounded-[30px] border border-slate-200 bg-white p-5">
             <h3 className="font-display text-2xl font-semibold text-slate-950">
-              {insightDimensions.find((dimension) => dimension.key === key)?.label || key}
+              {dimension.label}
             </h3>
-            <p className="mt-2 text-xs uppercase tracking-[0.24em] text-slate-400">มิติที่ {index + 1}</p>
+            <p className="mt-2 text-xs uppercase tracking-[0.24em] text-slate-400">
+              มิติที่ {index + 1} • {dimension.englishLabel}
+            </p>
+            <p className="mt-3 text-sm leading-7 text-slate-500">{dimension.focus}</p>
+
+            <div className="mt-5 rounded-[24px] border border-indigo-100 bg-indigo-50 px-4 py-4 text-sm leading-7 text-indigo-900">
+              <span className="font-semibold">Powerful Question:</span> {dimension.strengthPrompt}
+            </div>
+            <textarea
+              value={entry.strength}
+              onChange={(event) =>
+                updateModuleState("module1", (module) => ({
+                  ...module,
+                  dimensions: {
+                    ...module.dimensions,
+                    [dimension.key]: {
+                      ...module.dimensions[dimension.key],
+                      strength: event.target.value,
+                    },
+                  },
+                }))
+              }
+              rows={4}
+              className="field-input mt-4 min-h-[144px] resize-y"
+              placeholder="สิ่งที่เป็นจุดแข็งหรือสิ่งที่กำลังเวิร์กในมิตินี้"
+            />
+
+            <div className="mt-4 rounded-[24px] border border-amber-100 bg-amber-50 px-4 py-4 text-sm leading-7 text-amber-900">
+              <span className="font-semibold">Probe Deeper:</span> {dimension.weaknessPrompt}
+            </div>
+            <textarea
+              value={entry.weakness}
+              onChange={(event) =>
+                updateModuleState("module1", (module) => ({
+                  ...module,
+                  dimensions: {
+                    ...module.dimensions,
+                    [dimension.key]: {
+                      ...module.dimensions[dimension.key],
+                      weakness: event.target.value,
+                    },
+                  },
+                }))
+              }
+              rows={4}
+              className="field-input mt-4 min-h-[144px] resize-y"
+              placeholder="สิ่งที่ยังติดขัดหรือยังเป็น pain point ในมิตินี้"
+            />
+
             <textarea
               value={entry.answer}
               onChange={(event) =>
@@ -1592,14 +1816,18 @@ function renderInsightDimensions({ courseState, updateModuleState, onComplete })
                   ...module,
                   dimensions: {
                     ...module.dimensions,
-                    [key]: { ...module.dimensions[key], answer: event.target.value },
+                    [dimension.key]: {
+                      ...module.dimensions[dimension.key],
+                      answer: event.target.value,
+                    },
                   },
                 }))
               }
-              rows={5}
-              className="field-input mt-4 min-h-[144px] resize-y"
-              placeholder="พิมพ์คำตอบของคุณ..."
+              rows={3}
+              className="field-input mt-4 min-h-[110px] resize-y"
+              placeholder="บันทึกเพิ่มเติมหรือ raw note จากบริบทจริง"
             />
+
             <div className="mt-5">
               <div className="mb-2 flex items-center justify-between text-sm text-slate-600">
                 <span>ระดับ pain point / problem</span>
@@ -1607,7 +1835,7 @@ function renderInsightDimensions({ courseState, updateModuleState, onComplete })
               </div>
               <input
                 type="range"
-                min="0"
+                min="1"
                 max="5"
                 value={entry.rating}
                 onChange={(event) =>
@@ -1615,7 +1843,10 @@ function renderInsightDimensions({ courseState, updateModuleState, onComplete })
                     ...module,
                     dimensions: {
                       ...module.dimensions,
-                      [key]: { ...module.dimensions[key], rating: Number(event.target.value) },
+                      [dimension.key]: {
+                        ...module.dimensions[dimension.key],
+                        rating: Number(event.target.value),
+                      },
                     },
                   }))
                 }
@@ -1623,7 +1854,8 @@ function renderInsightDimensions({ courseState, updateModuleState, onComplete })
               />
             </div>
           </section>
-        ))}
+          );
+        })}
       </div>
 
       <button type="button" onClick={onComplete} className="primary-button">
@@ -1636,6 +1868,8 @@ function renderInsightDimensions({ courseState, updateModuleState, onComplete })
 
 function renderSwotVisualizer({
   courseState,
+  module1Swot,
+  updateModuleState,
   insightTokens,
   swotChartValues,
   swotDrafts,
@@ -1646,10 +1880,110 @@ function renderSwotVisualizer({
 }) {
   return (
     <div className="space-y-8">
-      <div className="grid gap-6 xl:grid-cols-[1.08fr_0.92fr]">
+      <div className="rounded-[28px] border border-emerald-100 bg-emerald-50 p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold text-emerald-900">Mission 2 : Look Out Of The Room</p>
+            <p className="mt-1 text-sm leading-7 text-emerald-800">
+              มองปัจจัยภายนอกด้วย PESTEL เพื่อเปลี่ยนข้อมูลดิบให้กลายเป็นโอกาสและอุปสรรคเชิงกลยุทธ์
+            </p>
+          </div>
+          <div className="rounded-full border border-emerald-200 bg-white px-4 py-2 text-sm font-semibold text-emerald-800">
+            {Object.values(courseState.module1.externalScan).filter(
+              (entry) => entry.opportunity.trim() && entry.threat.trim(),
+            ).length}
+            /6 ปัจจัย
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-5">
+        {externalScanFactors.map((factor) => {
+          const entry = courseState.module1.externalScan[factor.key];
+
+          return (
+            <section key={factor.key} className="rounded-[30px] border border-slate-200 bg-white p-6">
+              <p className="text-xs uppercase tracking-[0.24em] text-slate-400">{factor.label}</p>
+              <h3 className="mt-2 font-display text-2xl font-semibold text-slate-950">{factor.thaiLabel}</h3>
+              <p className="mt-2 text-sm leading-7 text-slate-500">{factor.focus}</p>
+
+              <textarea
+                rows={3}
+                value={entry.summary}
+                onChange={(event) =>
+                  updateModuleState("module1", (module) => ({
+                    ...module,
+                    externalScan: {
+                      ...module.externalScan,
+                      [factor.key]: {
+                        ...module.externalScan[factor.key],
+                        summary: event.target.value,
+                      },
+                    },
+                  }))
+                }
+                className="field-input mt-5 min-h-[110px] resize-y"
+                placeholder="สรุปบริบทภายนอกของปัจจัยนี้แบบสั้น ๆ"
+              />
+
+              <div className="mt-5 grid gap-4 lg:grid-cols-2">
+                <div className="rounded-[24px] border border-emerald-100 bg-emerald-50/80 p-4">
+                  <p className="text-sm font-semibold text-emerald-900">Opportunity</p>
+                  <p className="mt-2 text-sm leading-7 text-emerald-800">{factor.opportunityPrompt}</p>
+                  <textarea
+                    rows={4}
+                    value={entry.opportunity}
+                    onChange={(event) =>
+                      updateModuleState("module1", (module) => ({
+                        ...module,
+                        externalScan: {
+                          ...module.externalScan,
+                          [factor.key]: {
+                            ...module.externalScan[factor.key],
+                            opportunity: event.target.value,
+                          },
+                        },
+                      }))
+                    }
+                    className="field-input mt-4 min-h-[140px] resize-y"
+                    placeholder="โอกาสหรือแรงหนุนจากปัจจัยนี้"
+                  />
+                </div>
+
+                <div className="rounded-[24px] border border-rose-100 bg-rose-50/80 p-4">
+                  <p className="text-sm font-semibold text-rose-900">Threat</p>
+                  <p className="mt-2 text-sm leading-7 text-rose-800">{factor.threatPrompt}</p>
+                  <textarea
+                    rows={4}
+                    value={entry.threat}
+                    onChange={(event) =>
+                      updateModuleState("module1", (module) => ({
+                        ...module,
+                        externalScan: {
+                          ...module.externalScan,
+                          [factor.key]: {
+                            ...module.externalScan[factor.key],
+                            threat: event.target.value,
+                          },
+                        },
+                      }))
+                    }
+                    className="field-input mt-4 min-h-[140px] resize-y"
+                    placeholder="อุปสรรคหรือความเสี่ยงจากปัจจัยนี้"
+                  />
+                </div>
+              </div>
+            </section>
+          );
+        })}
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
         <div className="rounded-[30px] border border-slate-200 bg-white p-6">
-          <div className="section-tag">คลังคำสำคัญ</div>
-          <p className="mt-4 text-sm text-slate-500">กดปุ่ม S/W/O/T ใต้แต่ละไอเดียเพื่อจัดกลุ่มลงใน SWOT</p>
+          <div className="section-tag">คลังคำช่วยจัด SWOT</div>
+          <p className="mt-4 text-sm leading-7 text-slate-500">
+            หยิบคำสำคัญจาก Mission 1 ไปจัดกลุ่ม SWOT เพิ่มได้ทันที หรือพิมพ์ประเด็นใหม่เพื่อเก็บ insight ที่เพิ่งนึกออก
+          </p>
           <div className="mt-5 flex flex-wrap gap-3">
             {insightTokens.length > 0 ? insightTokens.map((token) => (
               <div key={token} className="rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-3">
@@ -1662,24 +1996,36 @@ function renderSwotVisualizer({
                       onClick={() => addSwotItem(bucket.key, token)}
                       className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
                     >
-                      {bucket.label.slice(0, 1)}
+                      เพิ่มเข้า {bucket.thaiLabel}
                     </button>
                   ))}
                 </div>
               </div>
             )) : (
               <div className="rounded-[24px] border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-500">
-                เมื่อคุณเขียนคำตอบใน Mission 1 แล้ว ระบบจะดึงวลีสำคัญมาช่วยจัด SWOT ให้เร็วขึ้น
+                เมื่อกรอก Mission 1 แล้ว ระบบจะดึงคำสำคัญมาแนะนำที่นี่อัตโนมัติ
               </div>
             )}
           </div>
         </div>
 
         <div className="rounded-[30px] border border-slate-200 bg-white p-6">
-          <h3 className="font-display text-2xl font-semibold text-slate-950">SWOT Balance</h3>
-          <p className="mt-2 text-sm leading-7 text-slate-500">ดูสมดุลของมุมมองว่าตอนนี้คุณกำลังเห็นจุดแข็ง จุดอ่อน โอกาส และอุปสรรคครบพอหรือยัง</p>
+          <h3 className="font-display text-2xl font-semibold text-slate-950">SWOT Balance Snapshot</h3>
+          <p className="mt-2 text-sm leading-7 text-slate-500">
+            เช็กว่าตอนนี้คุณครูมองสถานการณ์ครบทั้ง 4 มุมหรือยัง เพื่อเตรียมไปสู่ Mission 3
+          </p>
           <div className="mt-5">
             <SwotBalanceChart values={swotChartValues} />
+          </div>
+          <div className="mt-6 grid gap-3 sm:grid-cols-2">
+            {swotBuckets.map((bucket) => (
+              <div key={bucket.key} className="rounded-[22px] border border-slate-200 bg-slate-50 px-4 py-4">
+                <p className="text-sm font-semibold text-slate-900">{bucket.thaiLabel}</p>
+                <p className="mt-2 text-sm leading-7 text-slate-600">
+                  {module1Swot[bucket.key].slice(0, 2).join(" • ") || "ยังไม่มีรายการ"}
+                </p>
+              </div>
+            ))}
           </div>
         </div>
       </div>
@@ -1693,7 +2039,7 @@ function renderSwotVisualizer({
                 <p className="mt-1 text-sm text-slate-500">{bucket.label}</p>
               </div>
               <div className="rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-700">
-                {courseState.module1.swot[bucket.key].length} รายการ
+                {(courseState.module1.swot[bucket.key] || []).length} รายการที่เพิ่มเอง
               </div>
             </div>
 
@@ -1701,13 +2047,33 @@ function renderSwotVisualizer({
               <input
                 type="text"
                 value={swotDrafts[bucket.key]}
-                onChange={(event) => setSwotDrafts((previous) => ({ ...previous, [bucket.key]: event.target.value }))}
+                onChange={(event) =>
+                  setSwotDrafts((previous) => ({ ...previous, [bucket.key]: event.target.value }))
+                }
                 className="field-input"
-                placeholder={`พิมพ์ประเด็นเพิ่มใน ${bucket.thaiLabel}`}
+                placeholder={`พิมพ์ประเด็นที่อยากเพิ่มเองใน ${bucket.thaiLabel}`}
               />
-              <button type="button" onClick={() => addSwotItem(bucket.key, swotDrafts[bucket.key])} className="secondary-button shrink-0">
+              <button
+                type="button"
+                onClick={() => addSwotItem(bucket.key, swotDrafts[bucket.key])}
+                className="secondary-button shrink-0"
+              >
                 เพิ่ม
               </button>
+            </div>
+
+            <div className="mt-5">
+              <p className="text-xs uppercase tracking-[0.22em] text-slate-400">รายการสรุปอัตโนมัติ</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {module1Swot[bucket.key].length > 0 ? module1Swot[bucket.key].map((item) => (
+                  <span
+                    key={`${bucket.key}-derived-${item}`}
+                    className="rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700"
+                  >
+                    {item}
+                  </span>
+                )) : <p className="text-sm text-slate-400">ยังไม่มีรายการสรุปอัตโนมัติ</p>}
+              </div>
             </div>
 
             <div className="mt-5 flex flex-wrap gap-2">
@@ -1720,7 +2086,7 @@ function renderSwotVisualizer({
                 >
                   {item} ×
                 </button>
-              )) : <p className="text-sm text-slate-400">ยังไม่มีรายการในหมวดนี้</p>}
+              )) : <p className="text-sm text-slate-400">ยังไม่มีรายการที่เพิ่มเองในหมวดนี้</p>}
             </div>
           </section>
         ))}
@@ -1736,6 +2102,7 @@ function renderSwotVisualizer({
 
 function renderTowsMatrix({
   courseState,
+  module1Swot,
   towsDraft,
   setTowsDraft,
   addStrategy,
@@ -1743,12 +2110,12 @@ function renderTowsMatrix({
   onComplete,
 }) {
   const internalOptions = [
-    ...courseState.module1.swot.strengths.map((item) => ({ bucket: "strengths", label: item })),
-    ...courseState.module1.swot.weaknesses.map((item) => ({ bucket: "weaknesses", label: item })),
+    ...module1Swot.strengths.map((item) => ({ bucket: "strengths", label: item })),
+    ...module1Swot.weaknesses.map((item) => ({ bucket: "weaknesses", label: item })),
   ];
   const externalOptions = [
-    ...courseState.module1.swot.opportunities.map((item) => ({ bucket: "opportunities", label: item })),
-    ...courseState.module1.swot.threats.map((item) => ({ bucket: "threats", label: item })),
+    ...module1Swot.opportunities.map((item) => ({ bucket: "opportunities", label: item })),
+    ...module1Swot.threats.map((item) => ({ bucket: "threats", label: item })),
   ];
   const strategyType = getStrategyType(towsDraft.internalBucket, towsDraft.externalBucket);
 
@@ -1756,7 +2123,7 @@ function renderTowsMatrix({
     <div className="space-y-8">
       <div className="grid gap-6 xl:grid-cols-[1fr_1fr]">
         <div className="rounded-[30px] border border-slate-200 bg-white p-6">
-          <div className="section-tag">ตัวช่วยสร้าง TOWS</div>
+          <div className="section-tag">Mission 3 : Strategy Fusion</div>
           <div className="mt-5 grid gap-4">
             <div>
               <label className="field-label" htmlFor="internal-factor">ปัจจัยภายใน (S/W)</label>
@@ -1815,7 +2182,7 @@ function renderTowsMatrix({
               value={towsDraft.description}
               onChange={(event) => setTowsDraft((previous) => ({ ...previous, description: event.target.value }))}
               className="field-input min-h-[140px] resize-y"
-              placeholder="อธิบายว่าจะจับคู่สองปัจจัยนี้ให้เกิดแนวทางลงมือทำได้จริงอย่างไร"
+              placeholder="อธิบายว่าการจับคู่สองปัจจัยนี้จะกลายเป็นแนวทางลงมือทำจริงอย่างไร"
             />
 
             <button type="button" onClick={addStrategy} className="primary-button">
@@ -1845,7 +2212,11 @@ function renderTowsMatrix({
                     <h4 className="mt-2 text-lg font-semibold text-white">{strategy.title}</h4>
                     <p className="mt-2 text-sm leading-7 text-slate-300">{strategy.description}</p>
                   </div>
-                  <button type="button" onClick={() => removeStrategy(strategy.id)} className="rounded-full border border-white/10 px-3 py-1 text-xs text-slate-300 transition hover:border-red-300/30 hover:bg-red-400/10 hover:text-red-100">
+                  <button
+                    type="button"
+                    onClick={() => removeStrategy(strategy.id)}
+                    className="rounded-full border border-white/10 px-3 py-1 text-xs text-slate-300 transition hover:border-red-300/30 hover:bg-red-400/10 hover:text-red-100"
+                  >
                     ลบ
                   </button>
                 </div>
@@ -1873,7 +2244,7 @@ function renderNeedsDetective({ courseState, currentUser, updateModuleState, onC
     <div className="space-y-8">
       <div className="grid gap-6 lg:grid-cols-[1.05fr_0.95fr]">
         <div className="rounded-[30px] border border-slate-200 bg-white p-6">
-          <div className="section-tag">Needs Detective</div>
+          <div className="section-tag">Mission 4 : Needs Detective</div>
           <div className="mt-5 space-y-4">
             {courseState.module1.strategies.length > 0 ? courseState.module1.strategies.map((strategy) => (
               <div key={strategy.id} className="rounded-[24px] border border-slate-200 bg-slate-50 p-4">
@@ -1882,6 +2253,21 @@ function renderNeedsDetective({ courseState, currentUser, updateModuleState, onC
                     <p className="text-xs uppercase tracking-[0.24em] text-indigo-700">{strategy.type}</p>
                     <h3 className="mt-2 text-lg font-semibold text-slate-950">{strategy.title}</h3>
                     <p className="mt-2 text-sm leading-7 text-slate-600">{strategy.description}</p>
+                    <div className="mt-4">
+                      <p className="mb-2 text-sm font-medium text-slate-700">ให้คะแนนความเป็นไปได้ / ผลกระทบ</p>
+                      <StarRating
+                        value={Number(courseState.module1.strategyRatings[strategy.id] || 0)}
+                        onChange={(value) =>
+                          updateModuleState("module1", (module) => ({
+                            ...module,
+                            strategyRatings: {
+                              ...module.strategyRatings,
+                              [strategy.id]: value,
+                            },
+                          }))
+                        }
+                      />
+                    </div>
                   </div>
                   <input
                     type="radio"
@@ -1891,7 +2277,10 @@ function renderNeedsDetective({ courseState, currentUser, updateModuleState, onC
                       updateModuleState("module1", (module) => ({
                         ...module,
                         selectedStrategyId: strategy.id,
-                        insightCard: { ...module.insightCard, solution: module.insightCard.solution || strategy.title },
+                        insightCard: {
+                          ...module.insightCard,
+                          solution: module.insightCard.solution || strategy.title,
+                        },
                       }))
                     }
                     className="mt-1 h-5 w-5 accent-indigo-600"
@@ -1944,8 +2333,9 @@ function renderNeedsDetective({ courseState, currentUser, updateModuleState, onC
           </div>
 
           <div className="mt-6 rounded-[24px] border border-white/10 bg-white/5 p-4 text-sm leading-7 text-slate-300">
-            <p className="font-semibold text-white">ตัวอย่างสรุป</p>
+            <p className="font-semibold text-white">บทสรุปหลักฐาน</p>
             <p className="mt-2">กลยุทธ์ที่เลือก: {selectedStrategy?.title || "-"}</p>
+            <p className="mt-1">คะแนนกลยุทธ์: {selectedStrategy ? (courseState.module1.strategyRatings[selectedStrategy.id] || 0) : 0}/5</p>
             <p className="mt-1">รหัสอ้างอิง: {insightCardId}</p>
           </div>
         </div>
@@ -1961,10 +2351,10 @@ function renderNeedsDetective({ courseState, currentUser, updateModuleState, onC
 
 function renderPdcaActionPlan({ courseState, updateModuleState, onComplete }) {
   const pdcaFields = [
-    { key: "plan", label: "Plan", placeholder: "วางแผนว่าจะเริ่มจากอะไร ใครเกี่ยวข้อง และทรัพยากรอะไรที่ต้องใช้" },
+    { key: "plan", label: "Plan", placeholder: "วางแผนว่าจะเริ่มจากอะไร ใครเกี่ยวข้อง และทรัพยากรใดที่ต้องใช้" },
     { key: "do", label: "Do", placeholder: "ลงมือทำกิจกรรมหรือแนวทางที่ออกแบบไว้จริงอย่างไร" },
     { key: "check", label: "Check", placeholder: "จะวัดหรือตรวจสอบผลลัพธ์อย่างไร" },
-    { key: "act", label: "Act", placeholder: "ถ้าผลออกมาดีหรือยังไม่ดี จะปรับอย่างไรต่อ" },
+    { key: "act", label: "Act", placeholder: "ถ้าผลออกมาดีหรือยังไม่ดี จะปรับหรือขยายผลอย่างไรต่อ" },
   ];
 
   return (
@@ -1997,6 +2387,112 @@ function renderPdcaActionPlan({ courseState, updateModuleState, onComplete }) {
   );
 }
 
+function renderDreamLab({ courseState, updateModuleState, onComplete }) {
+  const matrixPrompts = [
+    { key: "so", title: "SO Strategy", prompt: "ถ้าใช้จุดแข็งคว้าโอกาสได้เต็มที่ ห้องเรียนในฝันจะหน้าตาเป็นอย่างไร?" },
+    { key: "wo", title: "WO Strategy", prompt: "ถ้าใช้โอกาสภายนอกมาช่วยลบจุดอ่อน จะเกิดการเปลี่ยนแปลงอะไรขึ้น?" },
+    { key: "st", title: "ST Strategy", prompt: "ถ้าใช้จุดแข็งมารับมืออุปสรรค คุณครูจะป้องกันความเสี่ยงอย่างไร?" },
+    { key: "wt", title: "WT Strategy", prompt: "ถ้าต้องเอาตัวรอดอย่างชาญฉลาด คุณครูจะออกแบบทางหนีทีไล่อย่างไร?" },
+  ];
+
+  return (
+    <div className="space-y-8">
+      <section className="rounded-[30px] border border-slate-200 bg-white p-6">
+        <div className="section-tag">Mission 1 : Dream Lab & TOWS Matrix</div>
+        <p className="mt-5 text-base leading-8 text-slate-700">
+          ถ้าทุกอย่างไม่มีข้อจำกัดเลย คุณครูอยากเห็นอะไรเกิดขึ้นกับผู้เรียน ห้องเรียน หรือชุมชนการเรียนรู้ของตัวเอง?
+        </p>
+        <textarea
+          rows={6}
+          value={courseState.module2.dreamLab}
+          onChange={(event) =>
+            updateModuleState("module2", (module) => ({ ...module, dreamLab: event.target.value }))
+          }
+          className="field-input mt-5 min-h-[180px] resize-y"
+          placeholder="เขียนภาพฝันแบบเปิดกว้างก่อน แล้วค่อยสกัดให้เป็นทิศทางของแผน"
+        />
+      </section>
+
+      <div className="grid gap-5 lg:grid-cols-2">
+        {matrixPrompts.map((item) => (
+          <section key={item.key} className="rounded-[30px] border border-slate-200 bg-white p-6">
+            <h3 className="font-display text-2xl font-semibold text-slate-950">{item.title}</h3>
+            <p className="mt-3 text-sm leading-7 text-slate-500">{item.prompt}</p>
+            <textarea
+              rows={5}
+              value={courseState.module2.dreamLabMatrix[item.key]}
+              onChange={(event) =>
+                updateModuleState("module2", (module) => ({
+                  ...module,
+                  dreamLabMatrix: {
+                    ...module.dreamLabMatrix,
+                    [item.key]: event.target.value,
+                  },
+                }))
+              }
+              className="field-input mt-4 min-h-[160px] resize-y"
+              placeholder="เขียนภาพอนาคตหรือแนวทางที่อยากทำในมุมนี้"
+            />
+          </section>
+        ))}
+      </div>
+
+      <button type="button" onClick={onComplete} className="primary-button">
+        บันทึก Mission 1
+        <CheckCircle2 size={16} />
+      </button>
+    </div>
+  );
+}
+
+function renderVibeCheck({ courseState, updateModuleState, onComplete }) {
+  const vibeFields = [
+    { key: "visual", title: "Visual", prompt: "เมื่อเดินเข้าห้องเรียนแล้วอยากเห็นภาพอะไรเป็นอย่างแรก?" },
+    { key: "audio", title: "Audio", prompt: "อยากได้ยินเสียงแบบไหนในห้องเรียนหรือกิจกรรมนี้?" },
+    { key: "feeling", title: "Feeling", prompt: "อยากให้ครูและผู้เรียนรู้สึกอย่างไรหลังผ่านกิจกรรมนี้?" },
+  ];
+
+  return (
+    <div className="space-y-8">
+      <section className="rounded-[30px] border border-slate-200 bg-white p-6">
+        <div className="section-tag">Mission 2 : Vibe Check</div>
+        <p className="mt-5 text-base leading-8 text-slate-700">
+          เปลี่ยนภาพฝันให้จับต้องได้ผ่าน 3 มิติ คือภาพ เสียง และความรู้สึก เพื่อให้ mood & tone ของโครงการชัดขึ้น
+        </p>
+      </section>
+
+      <div className="grid gap-5 lg:grid-cols-3">
+        {vibeFields.map((field) => (
+          <section key={field.key} className="rounded-[30px] border border-slate-200 bg-white p-6">
+            <h3 className="font-display text-2xl font-semibold text-slate-950">{field.title}</h3>
+            <p className="mt-3 text-sm leading-7 text-slate-500">{field.prompt}</p>
+            <textarea
+              rows={6}
+              value={courseState.module2.vibeBoard[field.key]}
+              onChange={(event) =>
+                updateModuleState("module2", (module) => ({
+                  ...module,
+                  vibeBoard: {
+                    ...module.vibeBoard,
+                    [field.key]: event.target.value,
+                  },
+                }))
+              }
+              className="field-input mt-4 min-h-[180px] resize-y"
+              placeholder={`อธิบาย ${field.title} ที่คุณครูอยากเห็น`}
+            />
+          </section>
+        ))}
+      </div>
+
+      <button type="button" onClick={onComplete} className="primary-button">
+        บันทึก Mission 2
+        <CheckCircle2 size={16} />
+      </button>
+    </div>
+  );
+}
+
 function renderModuleExtension(props) {
   const { lesson } = props;
 
@@ -2021,6 +2517,8 @@ function renderModuleExtension(props) {
       return renderLessonPlan(props);
     case "crafting_session":
       return renderCraftingSession(props);
+    case "beta_test":
+      return renderBetaTest(props);
     case "classroom_trial":
       return renderClassroomTrial(props);
     case "reflection_log":
@@ -2032,7 +2530,7 @@ function renderModuleExtension(props) {
     default:
       return (
         <div className="rounded-[28px] border border-slate-200 bg-slate-50 p-6 text-sm leading-7 text-slate-600">
-          กิจกรรมนี้กำลังอยู่ระหว่างเชื่อมต่อข้อมูล กรุณาตรวจสอบอีกครั้งภายหลัง
+          กิจกรรมนี้ยังอยู่ระหว่างเชื่อมต่อข้อมูล กรุณาตรวจสอบอีกครั้งภายหลัง
         </div>
       );
   }
@@ -2042,7 +2540,7 @@ function renderRoadmapBuilder({ courseState, updateModuleState, onComplete }) {
   return (
     <div className="space-y-8">
       <section className="rounded-[30px] border border-slate-200 bg-white p-6">
-        <div className="section-tag">Mapping the Journey</div>
+        <div className="section-tag">Mission 3 : Mapping the Journey</div>
         <div className="mt-6 space-y-5">
           {courseState.module2.roadmap.map((week, index) => (
             <div key={week.week} className="rounded-[26px] border border-slate-200 bg-slate-50 p-5">
@@ -2058,7 +2556,7 @@ function renderRoadmapBuilder({ courseState, updateModuleState, onComplete }) {
                     }))
                   }
                   className="field-input"
-                  placeholder="โฟกัสของสัปดาห์"
+                  placeholder="โฟกัสของสัปดาห์นี้"
                 />
                 <textarea
                   rows={3}
@@ -2095,13 +2593,20 @@ function renderRoadmapBuilder({ courseState, updateModuleState, onComplete }) {
 }
 
 function renderFiveWOneH({ courseState, updateModuleState, onComplete }) {
-  const labels = ["who", "what", "when", "where", "why", "how"];
+  const labels = [
+    ["who", "Who: ใครคือผู้เกี่ยวข้องหลัก"],
+    ["what", "What: จะทำอะไร"],
+    ["when", "When: จะทำเมื่อไร"],
+    ["where", "Where: จะเกิดขึ้นที่ไหน"],
+    ["why", "Why: ทำไมจึงสำคัญ"],
+    ["how", "How: จะทำอย่างไร"],
+  ];
   return (
     <div className="space-y-8">
       <section className="rounded-[30px] border border-slate-200 bg-white p-6">
-        <div className="section-tag">Define 5W1H</div>
+        <div className="section-tag">Mission 4 : Define 5W1H</div>
         <div className="mt-6 grid gap-4 md:grid-cols-2">
-          {labels.map((key) => (
+          {labels.map(([key, placeholder]) => (
             <textarea
               key={key}
               rows={4}
@@ -2113,7 +2618,7 @@ function renderFiveWOneH({ courseState, updateModuleState, onComplete }) {
                 }))
               }
               className="field-input min-h-[120px] resize-y"
-              placeholder={key.toUpperCase()}
+              placeholder={placeholder}
             />
           ))}
         </div>
@@ -2124,13 +2629,19 @@ function renderFiveWOneH({ courseState, updateModuleState, onComplete }) {
 }
 
 function renderSmartGoal({ courseState, updateModuleState, onComplete }) {
-  const labels = ["specific", "measurable", "achievable", "relevant", "timeBound"];
+  const labels = [
+    ["specific", "Specific: เป้าหมายที่ชัดเจน"],
+    ["measurable", "Measurable: จะวัดผลอย่างไร"],
+    ["achievable", "Achievable: ทำได้จริงด้วยทรัพยากรที่มี"],
+    ["relevant", "Relevant: เชื่อมกับ pain point และบริบทอย่างไร"],
+    ["timeBound", "Time-bound: กรอบเวลาที่ชัดเจน"],
+  ];
   return (
     <div className="space-y-8">
       <section className="rounded-[30px] border border-slate-200 bg-white p-6">
-        <div className="section-tag">SMART Objective</div>
+        <div className="section-tag">Mission 5 : SMART Objective</div>
         <div className="mt-6 grid gap-4">
-          {labels.map((key) => (
+          {labels.map(([key, placeholder]) => (
             <textarea
               key={key}
               rows={3}
@@ -2142,7 +2653,7 @@ function renderSmartGoal({ courseState, updateModuleState, onComplete }) {
                 }))
               }
               className="field-input min-h-[110px] resize-y"
-              placeholder={key}
+              placeholder={placeholder}
             />
           ))}
         </div>
@@ -2155,8 +2666,8 @@ function renderSmartGoal({ courseState, updateModuleState, onComplete }) {
 function renderQualityCheck({ courseState, updateModuleState, onComplete }) {
   const fields = [
     { key: "oecd", placeholder: "เชื่อมกับ OECD Learning Compass 2030 อย่างไร" },
-    { key: "royalPolicy", placeholder: "เชื่อมกับพระบรมราโชบาย ร.10 อย่างไร" },
-    { key: "sez", placeholder: "เชื่อมกับ SEZ ตาก อย่างไร" },
+    { key: "royalPolicy", placeholder: "เชื่อมกับพระบรมราโชบายด้านการศึกษา ร.10 อย่างไร" },
+    { key: "sez", placeholder: "เชื่อมกับ Tak SEZ หรือบริบทพื้นที่อย่างไร" },
   ];
 
   return (
@@ -2189,27 +2700,125 @@ function renderPlcMatchmaking({ courseState, updateModuleState, generatePlcMatch
     <div className="space-y-8">
       <section className="rounded-[30px] border border-slate-200 bg-white p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="section-tag">PLC Matchmaking</div>
-          <button type="button" onClick={generatePlcMatch} className="secondary-button">สุ่มคู่ครูออนไลน์</button>
+          <div className="section-tag">Mission 1 : The Mastermind Match</div>
+          <button type="button" onClick={generatePlcMatch} className="secondary-button">สุ่มคู่วง PLC</button>
         </div>
+        <p className="mt-5 text-sm leading-7 text-slate-500">
+          กำหนดหัวข้อ pain point รูปแบบการพบกัน วันเวลา สมาชิกในวง และบทบาทหลัก เพื่อให้การประชุม PLC มีโครงสร้างชัดตั้งแต่ต้น
+        </p>
+
+        <div className="mt-6 grid gap-4 md:grid-cols-2">
+          <input
+            type="text"
+            value={courseState.module3.meetingTopic}
+            onChange={(event) =>
+              updateModuleState("module3", (module) => ({ ...module, meetingTopic: event.target.value }))
+            }
+            className="field-input md:col-span-2"
+            placeholder="หัวข้อ PLC จาก pain point หรือ strategy ที่อยากหยิบไปคุย"
+          />
+
+          <select
+            value={courseState.module3.meetingFormat}
+            onChange={(event) =>
+              updateModuleState("module3", (module) => ({ ...module, meetingFormat: event.target.value }))
+            }
+            className="field-select"
+          >
+            <option value="online">Online PLC</option>
+            <option value="offline">Offline PLC</option>
+          </select>
+
+          <input
+            type="text"
+            value={courseState.module3.meetingSize}
+            onChange={(event) =>
+              updateModuleState("module3", (module) => ({ ...module, meetingSize: event.target.value }))
+            }
+            className="field-input"
+            placeholder="ขนาดวง เช่น 3-4 คน"
+          />
+
+          <input
+            type="text"
+            value={courseState.module3.pairedTeacherName}
+            onChange={(event) =>
+              updateModuleState("module3", (module) => ({ ...module, pairedTeacherName: event.target.value }))
+            }
+            className="field-input"
+            placeholder="ชื่อเพื่อนครูหรือผู้ร่วมวง"
+          />
+
+          <input
+            type="text"
+            value={courseState.module3.pairedTeacherUid}
+            onChange={(event) =>
+              updateModuleState("module3", (module) => ({ ...module, pairedTeacherUid: event.target.value }))
+            }
+            className="field-input"
+            placeholder="รหัสหรือชื่อย่อของผู้ร่วมวง"
+          />
+
+          <input
+            type="date"
+            value={courseState.module3.meetingDate}
+            onChange={(event) =>
+              updateModuleState("module3", (module) => ({ ...module, meetingDate: event.target.value }))
+            }
+            className="field-input"
+          />
+
+          <input
+            type="time"
+            value={courseState.module3.meetingTime}
+            onChange={(event) =>
+              updateModuleState("module3", (module) => ({ ...module, meetingTime: event.target.value }))
+            }
+            className="field-input"
+          />
+
+          {courseState.module3.meetingFormat === "online" ? (
+            <input
+              type="url"
+              value={courseState.module3.meetLink}
+              onChange={(event) =>
+                updateModuleState("module3", (module) => ({ ...module, meetLink: event.target.value }))
+              }
+              className="field-input md:col-span-2"
+              placeholder="ลิงก์ Google Meet หรือห้องประชุมออนไลน์"
+            />
+          ) : (
+            <input
+              type="text"
+              value={courseState.module3.meetingLocation}
+              onChange={(event) =>
+                updateModuleState("module3", (module) => ({ ...module, meetingLocation: event.target.value }))
+              }
+              className="field-input md:col-span-2"
+              placeholder="สถานที่นัดหมาย เช่น ห้อง PLC หรือห้องสมุด"
+            />
+          )}
+        </div>
+
         <div className="mt-6 grid gap-4 md:grid-cols-2">
           {[
-            ["meetingTopic", "หัวข้อ PLC จาก pain point"],
-            ["pairedTeacherName", "คู่ PLC"],
-            ["pairedTeacherUid", "รหัสคู่ PLC"],
-            ["meetingDate", "วันที่นัดหมาย", "date"],
-            ["meetingTime", "เวลา", "time"],
-            ["meetLink", "ลิงก์ Google Meet", "url"],
-          ].map(([key, placeholder, type = "text"]) => (
+            ["facilitator", "Facilitator"],
+            ["timeKeeper", "Time Keeper"],
+            ["challenger", "Challenger"],
+            ["noteTaker", "Note Taker"],
+          ].map(([key, label]) => (
             <input
               key={key}
-              type={type}
-              value={courseState.module3[key]}
+              type="text"
+              value={courseState.module3.plcRoles[key]}
               onChange={(event) =>
-                updateModuleState("module3", (module) => ({ ...module, [key]: event.target.value }))
+                updateModuleState("module3", (module) => ({
+                  ...module,
+                  plcRoles: { ...module.plcRoles, [key]: event.target.value },
+                }))
               }
-              className={`field-input ${key === "meetingTopic" || key === "meetLink" ? "md:col-span-2" : ""}`}
-              placeholder={placeholder}
+              className="field-input"
+              placeholder={`${label} คือใคร`}
             />
           ))}
         </div>
@@ -2223,25 +2832,47 @@ function renderPlcReport({ courseState, updateModuleState, onComplete }) {
   return (
     <div className="space-y-8">
       <section className="rounded-[30px] border border-slate-200 bg-white p-6">
-        <div className="section-tag">PLC Report</div>
+        <div className="section-tag">Mission 2 : The Alchemy Logbook</div>
         <div className="mt-6 space-y-4">
           <textarea
             rows={8}
+            value={courseState.module3.plcLogbook}
+            onChange={(event) =>
+              updateModuleState("module3", (module) => ({ ...module, plcLogbook: event.target.value }))
+            }
+            className="field-input min-h-[220px] resize-y"
+            placeholder="One-page logbook: สรุปวัตถุประสงค์ สิ่งที่แลกเปลี่ยน และข้อค้นพบจากวง PLC"
+          />
+          <textarea
+            rows={4}
+            value={courseState.module3.ahaMoment}
+            onChange={(event) =>
+              updateModuleState("module3", (module) => ({ ...module, ahaMoment: event.target.value }))
+            }
+            className="field-input min-h-[140px] resize-y"
+            placeholder="Aha! Moment หรือประโยคที่ทำให้มุมมองของคุณครูเปลี่ยนไป"
+          />
+          <textarea
+            rows={4}
             value={courseState.module3.plcReport}
             onChange={(event) =>
               updateModuleState("module3", (module) => ({ ...module, plcReport: event.target.value }))
             }
-            className="field-input min-h-[220px] resize-y"
-            placeholder="สรุปสิ่งที่ได้เรียนรู้จากการประชุม PLC"
+            className="field-input min-h-[140px] resize-y"
+            placeholder="สรุปผลลัพธ์สำคัญหลังจบวง PLC และสิ่งที่อยากนำไปใช้ต่อ"
           />
           <input
             type="url"
-            value={courseState.module3.plcScreenshotUrl}
+            value={courseState.module3.plcVibeEvidenceUrl}
             onChange={(event) =>
-              updateModuleState("module3", (module) => ({ ...module, plcScreenshotUrl: event.target.value }))
+              updateModuleState("module3", (module) => ({
+                ...module,
+                plcVibeEvidenceUrl: event.target.value,
+                plcScreenshotUrl: event.target.value,
+              }))
             }
             className="field-input"
-            placeholder="ลิงก์ภาพหน้าจอหรือหลักฐานการประชุม"
+            placeholder="ลิงก์ภาพ Screenshot หรือหลักฐานบรรยากาศการประชุม PLC"
           />
         </div>
       </section>
@@ -2254,8 +2885,31 @@ function renderPitchingSession({ courseState, updateModuleState, onComplete }) {
   return (
     <div className="space-y-8">
       <section className="rounded-[30px] border border-slate-200 bg-white p-6">
-        <div className="section-tag">Pitching 1 Minute</div>
-        <div className="mt-6 space-y-4">
+        <div className="section-tag">Mission 3 : The 60-Second Spell</div>
+        <div className="mt-6 grid gap-4 md:grid-cols-2">
+          {[
+            ["hook", "Hook: ประโยคเปิดที่ดึงความสนใจ"],
+            ["painPoint", "Pain Point: ปัญหาที่กำลังอยากแก้"],
+            ["solution", "Solution: วิธีการหรือแนวคิดของคุณครู"],
+            ["impact", "Impact: ผลลัพธ์ที่อยากเห็น"],
+          ].map(([key, placeholder]) => (
+            <textarea
+              key={key}
+              rows={4}
+              value={courseState.module3.pitchOutline[key]}
+              onChange={(event) =>
+                updateModuleState("module3", (module) => ({
+                  ...module,
+                  pitchOutline: { ...module.pitchOutline, [key]: event.target.value },
+                }))
+              }
+              className="field-input min-h-[130px] resize-y"
+              placeholder={placeholder}
+            />
+          ))}
+        </div>
+
+        <div className="mt-4 space-y-4">
           <textarea
             rows={8}
             value={courseState.module3.pitchScript}
@@ -2263,16 +2917,20 @@ function renderPitchingSession({ courseState, updateModuleState, onComplete }) {
               updateModuleState("module3", (module) => ({ ...module, pitchScript: event.target.value }))
             }
             className="field-input min-h-[220px] resize-y"
-            placeholder="ร่างสคริปต์ 1 นาที"
+            placeholder="ร่างสคริปต์ 1-1.5 นาที โดยต่อจาก Hook / Pain Point / Solution / Impact"
           />
           <input
             type="url"
-            value={courseState.module3.pitchAudioUrl}
+            value={courseState.module3.pitchMediaUrl}
             onChange={(event) =>
-              updateModuleState("module3", (module) => ({ ...module, pitchAudioUrl: event.target.value }))
+              updateModuleState("module3", (module) => ({
+                ...module,
+                pitchMediaUrl: event.target.value,
+                pitchAudioUrl: event.target.value,
+              }))
             }
             className="field-input"
-            placeholder="ลิงก์ไฟล์เสียงหรือหลักฐานการอัปโหลด"
+            placeholder="ลิงก์ไฟล์เสียง วิดีโอ หรือหลักฐานการ pitch"
           />
         </div>
       </section>
@@ -2284,6 +2942,7 @@ function renderPitchingSession({ courseState, updateModuleState, onComplete }) {
 function renderInnovationLab({ courseState, updateModuleState, onComplete }) {
   const fields = [
     ["innovationName", "ชื่อนวัตกรรม"],
+    ["innovationFormula", "สูตรผสมของนวัตกรรม เช่น Tablet + Storytelling + Active Learning"],
     ["hardware", "Hardware"],
     ["software", "Software"],
     ["activeLearning", "รูปแบบ Active Learning"],
@@ -2292,7 +2951,7 @@ function renderInnovationLab({ courseState, updateModuleState, onComplete }) {
   return (
     <div className="space-y-8">
       <section className="rounded-[30px] border border-slate-200 bg-white p-6">
-        <div className="section-tag">Innovation Lab</div>
+        <div className="section-tag">Mission 1 : Innovation Lab</div>
         <div className="mt-6 grid gap-4 md:grid-cols-2">
           {fields.map(([key, placeholder]) => (
             <input
@@ -2317,25 +2976,36 @@ function renderLessonPlan({ courseState, updateModuleState, onComplete }) {
   return (
     <div className="space-y-8">
       <section className="rounded-[30px] border border-slate-200 bg-white p-6">
-        <div className="section-tag">Lesson Plan</div>
-        <div className="mt-6 space-y-4">
-          <textarea
-            rows={9}
-            value={courseState.module4.lessonPlan}
+        <div className="section-tag">Mission 2 : The Master Blueprint</div>
+        <div className="mt-6 grid gap-4">
+          {[
+            ["hook", "Hook: จุดเริ่มต้นที่ดึงผู้เรียนเข้าสู่กิจกรรม"],
+            ["action", "Action: ลำดับกิจกรรมหรือกระบวนการเรียนรู้หลัก"],
+            ["reflect", "Reflect: ช่วงสะท้อนคิดหรือหลักฐานการเรียนรู้"],
+          ].map(([key, placeholder]) => (
+            <textarea
+              key={key}
+              rows={5}
+              value={courseState.module4.lessonBlueprint[key]}
+              onChange={(event) =>
+                updateModuleState("module4", (module) => ({
+                  ...module,
+                  lessonBlueprint: { ...module.lessonBlueprint, [key]: event.target.value },
+                }))
+              }
+              className="field-input min-h-[160px] resize-y"
+              placeholder={placeholder}
+            />
+          ))}
+
+          <input
+            type="url"
+            value={courseState.module4.lessonPlanUrl}
             onChange={(event) =>
-              updateModuleState("module4", (module) => ({ ...module, lessonPlan: event.target.value }))
+              updateModuleState("module4", (module) => ({ ...module, lessonPlanUrl: event.target.value }))
             }
-            className="field-input min-h-[240px] resize-y"
-            placeholder="แผนการจัดการเรียนรู้"
-          />
-          <textarea
-            rows={4}
-            value={courseState.module4.assessmentPlan}
-            onChange={(event) =>
-              updateModuleState("module4", (module) => ({ ...module, assessmentPlan: event.target.value }))
-            }
-            className="field-input min-h-[130px] resize-y"
-            placeholder="Assessment Plan"
+            className="field-input"
+            placeholder="ลิงก์ไฟล์ blueprint, lesson plan หรือเอกสารประกอบ"
           />
         </div>
       </section>
@@ -2348,7 +3018,7 @@ function renderCraftingSession({ courseState, updateModuleState, onComplete }) {
   return (
     <div className="space-y-8">
       <section className="rounded-[30px] border border-slate-200 bg-white p-6">
-        <div className="section-tag">Crafting Session</div>
+        <div className="section-tag">Mission 3 : Crafting Session</div>
         <div className="mt-6 space-y-4">
           <input
             type="url"
@@ -2357,7 +3027,7 @@ function renderCraftingSession({ courseState, updateModuleState, onComplete }) {
               updateModuleState("module4", (module) => ({ ...module, mediaEvidenceUrl: event.target.value }))
             }
             className="field-input"
-            placeholder="ลิงก์สื่อหรือหลักฐานการอัปโหลด"
+            placeholder="ลิงก์สื่อ ชิ้นงาน หรือหลักฐานการอัปโหลด"
           />
           <textarea
             rows={6}
@@ -2366,7 +3036,7 @@ function renderCraftingSession({ courseState, updateModuleState, onComplete }) {
               updateModuleState("module4", (module) => ({ ...module, mediaDescription: event.target.value }))
             }
             className="field-input min-h-[170px] resize-y"
-            placeholder="คำอธิบายสื่อ"
+            placeholder="อธิบายสื่อที่สร้าง วิธีใช้ และความเชื่อมโยงกับ blueprint"
           />
         </div>
       </section>
@@ -2375,11 +3045,42 @@ function renderCraftingSession({ courseState, updateModuleState, onComplete }) {
   );
 }
 
+function renderBetaTest({ courseState, updateModuleState, onComplete }) {
+  return (
+    <div className="space-y-8">
+      <section className="rounded-[30px] border border-slate-200 bg-white p-6">
+        <div className="section-tag">Mission 4 : The Beta Test</div>
+        <div className="mt-6 space-y-4">
+          <textarea
+            rows={5}
+            value={courseState.module4.betaStrength}
+            onChange={(event) =>
+              updateModuleState("module4", (module) => ({ ...module, betaStrength: event.target.value }))
+            }
+            className="field-input min-h-[160px] resize-y"
+            placeholder="จุดแข็งที่สุดของต้นแบบหรือสิ่งที่เวิร์กมากที่สุดในรอบทดลอง"
+          />
+          <textarea
+            rows={5}
+            value={courseState.module4.betaImprove}
+            onChange={(event) =>
+              updateModuleState("module4", (module) => ({ ...module, betaImprove: event.target.value }))
+            }
+            className="field-input min-h-[160px] resize-y"
+            placeholder="ถ้าจะทำเวอร์ชัน 2.0 อยากปรับอะไรต่อและเพราะอะไร"
+          />
+        </div>
+      </section>
+      <button type="button" onClick={onComplete} className="primary-button">บันทึก Mission 4<CheckCircle2 size={16} /></button>
+    </div>
+  );
+}
+
 function renderClassroomTrial({ courseState, updateModuleState, onComplete }) {
   return (
     <div className="space-y-8">
       <section className="rounded-[30px] border border-slate-200 bg-white p-6">
-        <div className="section-tag">Teaching in Action</div>
+        <div className="section-tag">Mission 1 : Teaching in Action</div>
         <div className="mt-6 space-y-4">
           <input
             type="url"
@@ -2388,7 +3089,7 @@ function renderClassroomTrial({ courseState, updateModuleState, onComplete }) {
               updateModuleState("module5", (module) => ({ ...module, teachingClipUrl: event.target.value }))
             }
             className="field-input"
-            placeholder="ลิงก์คลิปการสอนจริง 10 นาที"
+            placeholder="ลิงก์คลิปการสอนจริง 50-60 นาที"
           />
           <textarea
             rows={6}
@@ -2397,7 +3098,7 @@ function renderClassroomTrial({ courseState, updateModuleState, onComplete }) {
               updateModuleState("module5", (module) => ({ ...module, classroomContext: event.target.value }))
             }
             className="field-input min-h-[170px] resize-y"
-            placeholder="บริบทของคาบเรียน"
+            placeholder="บริบทของคาบเรียน เช่น ชั้นเรียน จำนวนผู้เรียน วิชา และจุดที่ต้องการสังเกต"
           />
         </div>
       </section>
@@ -2410,7 +3111,7 @@ function renderReflectionLog({ courseState, updateModuleState, onComplete }) {
   return (
     <div className="space-y-8">
       <section className="rounded-[30px] border border-slate-200 bg-white p-6">
-        <div className="section-tag">Reflection Log</div>
+        <div className="section-tag">Mission 2 : Reflection Log</div>
         <div className="mt-6 space-y-4">
           <textarea
             rows={8}
@@ -2419,7 +3120,7 @@ function renderReflectionLog({ courseState, updateModuleState, onComplete }) {
               updateModuleState("module5", (module) => ({ ...module, reflectionLog: event.target.value }))
             }
             className="field-input min-h-[220px] resize-y"
-            placeholder="บันทึกหลังการสอน"
+            placeholder="บันทึกสิ่งที่เกิดขึ้นจริง สิ่งที่เวิร์ก และสิ่งที่อยากปรับหลังสอน"
           />
           <textarea
             rows={5}
@@ -2428,7 +3129,7 @@ function renderReflectionLog({ courseState, updateModuleState, onComplete }) {
               updateModuleState("module5", (module) => ({ ...module, learnerResponse: event.target.value }))
             }
             className="field-input min-h-[150px] resize-y"
-            placeholder="เสียงตอบรับหรือพฤติกรรมของผู้เรียน"
+            placeholder="เสียงตอบรับ พฤติกรรม หรือสัญญาณสำคัญจากผู้เรียน"
           />
         </div>
       </section>
@@ -2441,7 +3142,7 @@ function renderGrowthPlan({ courseState, updateModuleState, onComplete }) {
   return (
     <div className="space-y-8">
       <section className="rounded-[30px] border border-slate-200 bg-white p-6">
-        <div className="section-tag">Next Growth Plan</div>
+        <div className="section-tag">Mission 3 : Next Growth Plan</div>
         <textarea
           rows={10}
           value={courseState.module5.nextGrowthPlan}
@@ -2449,7 +3150,7 @@ function renderGrowthPlan({ courseState, updateModuleState, onComplete }) {
             updateModuleState("module5", (module) => ({ ...module, nextGrowthPlan: event.target.value }))
           }
           className="field-input min-h-[260px] resize-y"
-          placeholder="แนวทางต่อยอดในรอบถัดไป"
+          placeholder="วางแนวทางพัฒนา/ต่อยอดในรอบถัดไปจากหลักฐานที่ได้จริง"
         />
       </section>
       <button type="button" onClick={onComplete} className="primary-button">บันทึก Mission 3<CheckCircle2 size={16} /></button>
@@ -2461,9 +3162,9 @@ function renderPlatformSurvey({ courseState, updateModuleState, onComplete }) {
   return (
     <div className="space-y-8">
       <div className="grid gap-5 lg:grid-cols-3">
-        <RatingCard title="ความพึงพอใจโดยรวม" description="แพลตฟอร์มนี้ตอบโจทย์การเรียนรู้ของคุณมากแค่ไหน" value={courseState.survey.satisfaction} onChange={(value) => updateModuleState("survey", (module) => ({ ...module, satisfaction: value }))} />
-        <RatingCard title="ความง่ายในการใช้งาน" description="การนำทางและกรอกข้อมูลใช้งานได้ลื่นไหลเพียงใด" value={courseState.survey.easeOfUse} onChange={(value) => updateModuleState("survey", (module) => ({ ...module, easeOfUse: value }))} />
-        <RatingCard title="ประโยชน์ของ AI Mentor" description="คำแนะนำระหว่างทางช่วยให้คิดต่อและทำงานได้จริงแค่ไหน" value={courseState.survey.aiHelpfulness} onChange={(value) => updateModuleState("survey", (module) => ({ ...module, aiHelpfulness: value }))} />
+        <RatingCard title="ความพึงพอใจโดยรวม" description="แพลตฟอร์มนี้ตอบโจทย์การเรียนรู้ของคุณครูมากแค่ไหน" value={courseState.survey.satisfaction} onChange={(value) => updateModuleState("survey", (module) => ({ ...module, satisfaction: value }))} />
+        <RatingCard title="ความง่ายในการใช้งาน" description="การนำทางและการกรอกข้อมูลใช้งานได้ลื่นไหลเพียงใด" value={courseState.survey.easeOfUse} onChange={(value) => updateModuleState("survey", (module) => ({ ...module, easeOfUse: value }))} />
+        <RatingCard title="ประโยชน์ของ AI Mentor" description="คำแนะนำระหว่างทางช่วยให้คิดต่อและทำงานได้จริงมากแค่ไหน" value={courseState.survey.aiHelpfulness} onChange={(value) => updateModuleState("survey", (module) => ({ ...module, aiHelpfulness: value }))} />
       </div>
 
       <section className="rounded-[30px] border border-slate-200 bg-white p-6">
@@ -2482,3 +3183,4 @@ function renderPlatformSurvey({ courseState, updateModuleState, onComplete }) {
     </div>
   );
 }
+

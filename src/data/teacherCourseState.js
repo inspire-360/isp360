@@ -1,10 +1,34 @@
-import { insightDimensions, teacherQuizBank } from "./teacherCourse";
+import {
+  externalScanFactors,
+  insightDimensions,
+  teacherQuizBank,
+} from "./teacherCourse";
+
+const roadmapWeeks = [
+  "Week 1 (Set Up)",
+  "Week 2 (Pilot)",
+  "Week 3 (Feedback)",
+  "Week 4 (Showcase)",
+];
 
 export function createDefaultTeacherCourseState() {
   return {
     module1: {
       dimensions: insightDimensions.reduce((accumulator, dimension) => {
-        accumulator[dimension.key] = { answer: "", rating: 0 };
+        accumulator[dimension.key] = {
+          answer: "",
+          strength: "",
+          weakness: "",
+          rating: 0,
+        };
+        return accumulator;
+      }, {}),
+      externalScan: externalScanFactors.reduce((accumulator, factor) => {
+        accumulator[factor.key] = {
+          summary: "",
+          opportunity: "",
+          threat: "",
+        };
         return accumulator;
       }, {}),
       swot: {
@@ -30,13 +54,24 @@ export function createDefaultTeacherCourseState() {
     },
     module2: {
       dreamLab: "",
+      dreamLabMatrix: {
+        so: "",
+        wo: "",
+        st: "",
+        wt: "",
+      },
       vibeCheck: "",
-      roadmap: [
-        { week: "สัปดาห์ที่ 1", focus: "", actions: "", evidence: "" },
-        { week: "สัปดาห์ที่ 2", focus: "", actions: "", evidence: "" },
-        { week: "สัปดาห์ที่ 3", focus: "", actions: "", evidence: "" },
-        { week: "สัปดาห์ที่ 4", focus: "", actions: "", evidence: "" },
-      ],
+      vibeBoard: {
+        visual: "",
+        audio: "",
+        feeling: "",
+      },
+      roadmap: roadmapWeeks.map((week) => ({
+        week,
+        focus: "",
+        actions: "",
+        evidence: "",
+      })),
       fiveWOneH: {
         who: "",
         what: "",
@@ -59,26 +94,54 @@ export function createDefaultTeacherCourseState() {
       },
     },
     module3: {
+      meetingFormat: "online",
       meetingTopic: "",
       pairedTeacherName: "",
       pairedTeacherUid: "",
       meetingDate: "",
       meetingTime: "",
+      meetingSize: "3-4 คน",
       meetLink: "",
+      meetingLocation: "",
+      plcRoles: {
+        facilitator: "",
+        timeKeeper: "",
+        challenger: "",
+        noteTaker: "",
+      },
+      plcLogbook: "",
+      ahaMoment: "",
       plcReport: "",
       plcScreenshotUrl: "",
+      plcVibeEvidenceUrl: "",
       pitchScript: "",
+      pitchOutline: {
+        hook: "",
+        painPoint: "",
+        solution: "",
+        impact: "",
+      },
       pitchAudioUrl: "",
+      pitchMediaUrl: "",
     },
     module4: {
       innovationName: "",
+      innovationFormula: "",
       hardware: "",
       software: "",
       activeLearning: "",
       lessonPlan: "",
+      lessonBlueprint: {
+        hook: "",
+        action: "",
+        reflect: "",
+      },
+      lessonPlanUrl: "",
       assessmentPlan: "",
       mediaEvidenceUrl: "",
       mediaDescription: "",
+      betaStrength: "",
+      betaImprove: "",
     },
     module5: {
       teachingClipUrl: "",

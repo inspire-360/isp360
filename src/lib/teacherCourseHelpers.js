@@ -29,7 +29,8 @@ export const PLC_TEACHER_POOL = [
 ];
 
 export const TOTAL_TEACHER_LESSONS = teacherCourseData.modules.reduce(
-  (sum, module) => sum + module.lessons.length,
+  (sum, module) =>
+    sum + module.lessons.filter((lesson, lessonIndex) => !isOptionalIntroLesson(module, lessonIndex)).length,
   0,
 );
 
@@ -139,11 +140,15 @@ export function getTeacherCourseProgressPercent(completedLessons = []) {
     return 0;
   }
 
-  return Math.round((completedLessons.length / TOTAL_TEACHER_LESSONS) * 100);
+  const completedRequiredLessons = getCompletedRequiredLessonIds(completedLessons);
+
+  return Math.round((completedRequiredLessons.length / TOTAL_TEACHER_LESSONS) * 100);
 }
 
 export function getTeacherCourseStatus(completedLessons = []) {
-  return completedLessons.length >= TOTAL_TEACHER_LESSONS && TOTAL_TEACHER_LESSONS > 0
+  const completedRequiredLessons = getCompletedRequiredLessonIds(completedLessons);
+
+  return completedRequiredLessons.length >= TOTAL_TEACHER_LESSONS && TOTAL_TEACHER_LESSONS > 0
     ? "completed"
     : "active";
 }
@@ -153,7 +158,7 @@ export function buildTeacherModuleStatuses(completedLessons = []) {
   let unlocked = true;
 
   return teacherCourseData.modules.map((module) => {
-    const lessonIds = module.lessons.map((lesson) => lesson.id);
+    const lessonIds = getRequiredLessonIds(module);
     const completedCount = lessonIds.filter((lessonId) => completedSet.has(lessonId)).length;
     const totalLessons = lessonIds.length;
     const isCompleted = totalLessons > 0 && completedCount === totalLessons;
@@ -176,7 +181,8 @@ export function buildTeacherModuleStatuses(completedLessons = []) {
 }
 
 export function getModuleIndexFromPath(pathname) {
-  const slug = pathname.replace("/course/teacher", "").replaceAll("/", "");
+  const [moduleSlug = ""] = pathname.replace("/course/teacher", "").split("/").filter(Boolean);
+  const slug = moduleSlug.trim();
   if (!slug) {
     return null;
   }
@@ -189,12 +195,57 @@ export function getModuleIndexFromPath(pathname) {
   return moduleIndex === -1 ? null : moduleIndex;
 }
 
+export function getLessonSelectionFromPath(pathname) {
+  const segments = pathname.replace("/course/teacher", "").split("/").filter(Boolean);
+  const [moduleSlug = "", lessonSlug = ""] = segments;
+
+  if (!moduleSlug) {
+    return null;
+  }
+
+  const resolvedModuleSlug = MODULE_PATH_ALIASES[moduleSlug] || moduleSlug;
+  const moduleIndex = teacherCourseData.modules.findIndex(
+    (module) => module.id === resolvedModuleSlug,
+  );
+
+  if (moduleIndex === -1) {
+    return null;
+  }
+
+  if (!lessonSlug) {
+    return { moduleIndex, lessonIndex: null };
+  }
+
+  const lessonIndex = teacherCourseData.modules[moduleIndex].lessons.findIndex(
+    (lesson) => lesson.id === lessonSlug,
+  );
+
+  return {
+    moduleIndex,
+    lessonIndex: lessonIndex === -1 ? null : lessonIndex,
+  };
+}
+
 export function getFirstIncompleteLessonIndex(module, completedLessons) {
   const lessonIndex = module.lessons.findIndex(
     (lesson) => !completedLessons.includes(lesson.id),
   );
 
   return lessonIndex === -1 ? Math.max(0, module.lessons.length - 1) : lessonIndex;
+}
+
+export function getPreferredLessonIndex(module, completedLessons = []) {
+  const firstRequiredIncompleteIndex = module.lessons.findIndex(
+    (lesson, lessonIndex) =>
+      !isOptionalIntroLesson(module, lessonIndex) && !completedLessons.includes(lesson.id),
+  );
+
+  if (firstRequiredIncompleteIndex !== -1) {
+    return firstRequiredIncompleteIndex;
+  }
+
+  const lastRequiredLessonIndex = findLastRequiredLessonIndex(module);
+  return lastRequiredLessonIndex === -1 ? 0 : lastRequiredLessonIndex;
 }
 
 export function isLessonLocked(moduleIndex, lessonIndex, progress) {
@@ -206,10 +257,19 @@ export function isLessonLocked(moduleIndex, lessonIndex, progress) {
     return false;
   }
 
-  const previousLessonId =
-    teacherCourseData.modules[moduleIndex].lessons[lessonIndex - 1]?.id;
+  const priorLessons = teacherCourseData.modules[moduleIndex].lessons.slice(
+    0,
+    lessonIndex,
+  );
 
-  return !progress.completedLessons.includes(previousLessonId);
+  return priorLessons.some((lesson, priorIndex) => {
+    if (progress.completedLessons.includes(lesson.id)) {
+      return false;
+    }
+
+    const isSkippableIntro = priorIndex === 0 && lesson.type === "article";
+    return !isSkippableIntro;
+  });
 }
 
 export function withCompletedLesson(progress, moduleIndex, lessonId, badgeName = "") {
@@ -223,9 +283,7 @@ export function withCompletedLesson(progress, moduleIndex, lessonId, badgeName =
       : progress.badges;
 
   let currentModuleIndex = progress.currentModuleIndex;
-  const moduleLessons = teacherCourseData.modules[moduleIndex].lessons.map(
-    (lesson) => lesson.id,
-  );
+  const moduleLessons = getRequiredLessonIds(teacherCourseData.modules[moduleIndex]);
   const moduleCompleted = moduleLessons.every((item) =>
     completedLessons.includes(item),
   );
@@ -279,14 +337,52 @@ export function buildQuizProgress(progress, lessonContent, score, passed) {
   };
 }
 
+export function buildModule1Swot(module1 = {}) {
+  const dimensions = module1.dimensions || {};
+  const externalScan = module1.externalScan || {};
+  const manualSwot = module1.swot || {};
+
+  return {
+    strengths: uniqueList([
+      ...Object.values(dimensions).flatMap((entry) =>
+        splitInsightText(entry?.strength || entry?.answer),
+      ),
+      ...(manualSwot.strengths || []),
+    ]),
+    weaknesses: uniqueList([
+      ...Object.values(dimensions).flatMap((entry) =>
+        splitInsightText(entry?.weakness),
+      ),
+      ...(manualSwot.weaknesses || []),
+    ]),
+    opportunities: uniqueList([
+      ...Object.values(externalScan).flatMap((entry) =>
+        splitInsightText(entry?.opportunity),
+      ),
+      ...(manualSwot.opportunities || []),
+    ]),
+    threats: uniqueList([
+      ...Object.values(externalScan).flatMap((entry) =>
+        splitInsightText(entry?.threat),
+      ),
+      ...(manualSwot.threats || []),
+    ]),
+  };
+}
+
 export function buildInsightTokens(dimensions, swot) {
   const existingSwotItems = uniqueList(
-    Object.values(swot).flatMap((items) => items),
+    Object.values(swot || {}).flatMap((items) => items),
   );
 
-  const tokens = insightDimensions.flatMap((dimension) =>
-    splitInsightText(dimensions[dimension.key].answer),
-  );
+  const tokens = insightDimensions.flatMap((dimension) => {
+    const entry = dimensions?.[dimension.key] || {};
+    return [
+      ...splitInsightText(entry.answer),
+      ...splitInsightText(entry.strength),
+      ...splitInsightText(entry.weakness),
+    ];
+  });
 
   return uniqueList(tokens)
     .filter((token) => !existingSwotItems.includes(token))
@@ -361,4 +457,32 @@ export function clamp(value, min, max) {
 
 function isPlainObject(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isOptionalIntroLesson(module, lessonIndex) {
+  return lessonIndex === 0 && module.lessons[lessonIndex]?.type === "article";
+}
+
+function getRequiredLessonIds(module) {
+  return module.lessons
+    .filter((lesson, lessonIndex) => !isOptionalIntroLesson(module, lessonIndex))
+    .map((lesson) => lesson.id);
+}
+
+function getCompletedRequiredLessonIds(completedLessons = []) {
+  const requiredIds = new Set(
+    teacherCourseData.modules.flatMap((module) => getRequiredLessonIds(module)),
+  );
+
+  return completedLessons.filter((lessonId) => requiredIds.has(lessonId));
+}
+
+function findLastRequiredLessonIndex(module) {
+  for (let index = module.lessons.length - 1; index >= 0; index -= 1) {
+    if (!isOptionalIntroLesson(module, index)) {
+      return index;
+    }
+  }
+
+  return -1;
 }
